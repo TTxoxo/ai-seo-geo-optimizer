@@ -46,11 +46,11 @@ if ( isset( $_POST['ai_seo_geo_generate_action'] ) ) {
 		array(
 			'post_id'        => $post_id,
 			'provider_id'    => absint( $_POST['provider_id'] ?? 0 ),
-			'model'          => sanitize_text_field( $_POST['model'] ?? '' ),
-			'target_keyword' => sanitize_text_field( $_POST['target_keyword'] ?? '' ),
-			'language'       => sanitize_text_field( $_POST['language'] ?? 'en' ),
-			'brand_tone'     => sanitize_text_field( $_POST['brand_tone'] ?? 'professional' ),
-			'fields'         => isset( $_POST['fields'] ) ? (array) $_POST['fields'] : array(),
+			'model'          => sanitize_text_field( wp_unslash( $_POST['model'] ?? '' ) ),
+			'target_keyword' => sanitize_text_field( wp_unslash( $_POST['target_keyword'] ?? '' ) ),
+			'language'       => sanitize_text_field( wp_unslash( $_POST['language'] ?? 'en' ) ),
+			'brand_tone'     => sanitize_text_field( wp_unslash( $_POST['brand_tone'] ?? 'professional' ) ),
+			'fields'         => isset( $_POST['fields'] ) ? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['fields'] ) ) : array(),
 		)
 	);
 	$notice         = $result['message'];
@@ -64,7 +64,7 @@ if ( isset( $_POST['ai_seo_geo_generate_action'] ) ) {
 if ( isset( $_POST['ai_seo_geo_apply_action'] ) ) {
 	AI_SEO_GEO_Security::verify_nonce_or_die( 'ai_seo_geo_apply_changes', 'ai_seo_geo_apply_nonce' );
 	$job_id          = absint( $_POST['job_id'] ?? 0 );
-	$selected_fields = isset( $_POST['apply_fields'] ) ? array_map( 'sanitize_text_field', (array) $_POST['apply_fields'] ) : array();
+	$selected_fields = isset( $_POST['apply_fields'] ) ? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['apply_fields'] ) ) : array();
 	$apply_result    = $revision_manager->apply_selected_changes( $job_id, $post_id, $selected_fields );
 	$notice          = $apply_result['message'];
 	$notice_type     = ! empty( $apply_result['success'] ) ? 'success' : 'error';
