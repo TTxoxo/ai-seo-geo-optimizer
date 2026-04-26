@@ -1,0 +1,38 @@
+Task: Optimize the following {{post_type}} content for SEO and GEO while preserving factual accuracy.
+
+Context:
+- Site: {{site_name}} ({{site_url}})
+- Post ID: {{post_id}}
+- Title: {{post_title}}
+- Excerpt: {{post_excerpt}}
+- Categories: {{post_categories}}
+- Tags: {{post_tags}}
+- Target keyword: {{target_keyword}}
+- Brand tone: {{brand_tone}}
+- Internal links: {{internal_links}}
+- Language: {{language}}
+
+Content:
+{{post_content}}
+
+Strict authenticity rules:
+1) Do not invent product specs, certifications, customer cases, countries, prices, stock, lead times, or company facts.
+2) If uncertain, add the point to needs_human_review.
+3) Removed unsupported marketing claims must go to unsupported_claims_removed.
+4) Keep writing like a human editor, not keyword stuffing or AI spam.
+
+SEO rules:
+- Identify search_intent.
+- Provide SEO title and meta description naturally.
+- Keep H2/H3 structure.
+- First paragraph must define what it is, where used, who it helps, and what problem it solves.
+- Provide FAQ, internal link suggestions, image alt suggestions, and schema suggestion.
+
+GEO rules:
+- Add clear definition and quick answer.
+- Use structured concise sections.
+- Include FAQ.
+- Output geo_summary and fact_check_notes.
+
+Output requirement:
+Return valid JSON only. No markdown. No explanation.
