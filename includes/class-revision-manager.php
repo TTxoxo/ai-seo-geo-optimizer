@@ -217,11 +217,13 @@ class AI_SEO_GEO_Revision_Manager {
 			$this->seo_adapter->restore_meta( $post_id, $meta );
 		}
 		if ( is_array( $terms ) ) {
-			if ( ! empty( $terms['post_tag'] ) && taxonomy_exists( 'post_tag' ) ) {
-				wp_set_post_terms( $post_id, array_map( 'sanitize_text_field', $terms['post_tag'] ), 'post_tag', false );
+			if ( taxonomy_exists( 'post_tag' ) ) {
+				$post_tags = ! empty( $terms['post_tag'] ) && is_array( $terms['post_tag'] ) ? array_map( 'sanitize_text_field', $terms['post_tag'] ) : array();
+				wp_set_post_terms( $post_id, $post_tags, 'post_tag', false );
 			}
-			if ( ! empty( $terms['product_tag'] ) && taxonomy_exists( 'product_tag' ) ) {
-				wp_set_post_terms( $post_id, array_map( 'sanitize_text_field', $terms['product_tag'] ), 'product_tag', false );
+			if ( taxonomy_exists( 'product_tag' ) ) {
+				$product_tags = ! empty( $terms['product_tag'] ) && is_array( $terms['product_tag'] ) ? array_map( 'sanitize_text_field', $terms['product_tag'] ) : array();
+				wp_set_post_terms( $post_id, $product_tags, 'product_tag', false );
 			}
 		}
 

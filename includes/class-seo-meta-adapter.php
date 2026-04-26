@@ -78,8 +78,20 @@ class AI_SEO_GEO_SEO_Meta_Adapter {
 	 * @return void
 	 */
 	public function restore_meta( $post_id, $meta_array ) {
-		foreach ( $meta_array as $meta_key => $meta_value ) {
-			update_post_meta( $post_id, sanitize_key( $meta_key ), sanitize_textarea_field( (string) $meta_value ) );
+		$map = array(
+			'yoast_title'        => '_yoast_wpseo_title',
+			'yoast_description'  => '_yoast_wpseo_metadesc',
+			'rank_title'         => 'rank_math_title',
+			'rank_description'   => 'rank_math_description',
+			'rank_focus_keyword' => 'rank_math_focus_keyword',
+			'ai_title'           => '_ai_seo_geo_title',
+			'ai_description'     => '_ai_seo_geo_description',
+			'ai_focus_keyword'   => '_ai_seo_geo_focus_keyword',
+		);
+
+		foreach ( $map as $snapshot_key => $meta_key ) {
+			$value = isset( $meta_array[ $snapshot_key ] ) ? sanitize_textarea_field( (string) $meta_array[ $snapshot_key ] ) : '';
+			update_post_meta( $post_id, $meta_key, $value );
 		}
 	}
 }
