@@ -33,6 +33,8 @@ require_once AI_SEO_GEO_PATH . 'includes/providers/class-custom-provider.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-ai-provider-manager.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-content-query.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-prompt-builder.php';
+require_once AI_SEO_GEO_PATH . 'includes/class-optimizer.php';
+require_once AI_SEO_GEO_PATH . 'includes/class-review-manager.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-admin-menu.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-plugin.php';
 

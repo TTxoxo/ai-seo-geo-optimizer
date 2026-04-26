@@ -77,6 +77,15 @@ class AI_SEO_GEO_Admin_Menu {
 		);
 
 		add_submenu_page(
+			null,
+			__( 'Review & Apply', 'ai-seo-geo-optimizer' ),
+			__( 'Review & Apply', 'ai-seo-geo-optimizer' ),
+			$capability,
+			'ai-seo-geo-review-apply',
+			array( $this, 'render_review_apply_page' )
+		);
+
+		add_submenu_page(
 			$slug,
 			__( 'Logs', 'ai-seo-geo-optimizer' ),
 			__( 'Logs', 'ai-seo-geo-optimizer' ),
@@ -134,5 +143,15 @@ class AI_SEO_GEO_Admin_Menu {
 	public function render_logs_page() {
 		AI_SEO_GEO_Security::require_manage_options();
 		require AI_SEO_GEO_PATH . 'admin/pages/logs.php';
+	}
+
+	/**
+	 * Renders review/apply page.
+	 *
+	 * @return void
+	 */
+	public function render_review_apply_page() {
+		AI_SEO_GEO_Security::require_manage_options();
+		require AI_SEO_GEO_PATH . 'admin/pages/review-apply.php';
 	}
 }
