@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Handles AI provider CRUD and test connection operations.
+ * Handles AI provider CRUD and runtime invocation.
  */
 class AI_SEO_GEO_AI_Provider_Manager {
 
@@ -51,7 +51,6 @@ class AI_SEO_GEO_AI_Provider_Manager {
 		);
 
 		$templates = array();
-
 		foreach ( $providers as $provider ) {
 			$templates[ $provider->get_provider_key() ] = array(
 				'provider_key'  => $provider->get_provider_key(),
@@ -76,11 +75,10 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			"SELECT * FROM {$this->table_name} ORDER BY id DESC LIMIT %d",
 			200
 		);
-
-		$rows = $wpdb->get_results( $query, ARRAY_A );
+		$rows  = $wpdb->get_results( $query, ARRAY_A );
 
 		foreach ( $rows as &$row ) {
-			$row['api_key_masked'] = $this->mask_api_key( $this->decrypt_api_key( $row['api_key_encrypted'] ) );
+			$row = $this->with_safe_view_fields( $row );
 		}
 		unset( $row );
 
@@ -88,7 +86,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 	}
 
 	/**
-	 * Gets one provider by ID.
+	 * Gets provider by ID.
 	 *
 	 * @param int $provider_id Provider ID.
 	 *
@@ -101,16 +99,127 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			"SELECT * FROM {$this->table_name} WHERE id = %d LIMIT 1",
 			absint( $provider_id )
 		);
-
-		$row = $wpdb->get_row( $query, ARRAY_A );
+		$row   = $wpdb->get_row( $query, ARRAY_A );
 
 		if ( ! $row ) {
 			return null;
 		}
 
-		$row['api_key_masked'] = $this->mask_api_key( $this->decrypt_api_key( $row['api_key_encrypted'] ) );
+		return $this->with_safe_view_fields( $row );
+	}
 
-		return $row;
+	/**
+	 * Gets provider by provider_key.
+	 *
+	 * @param string $provider_key Provider key.
+	 *
+	 * @return array|null
+	 */
+	public function get_provider_by_key( $provider_key ) {
+		global $wpdb;
+
+		$provider_key = sanitize_text_field( $provider_key );
+		$query        = $wpdb->prepare(
+			"SELECT * FROM {$this->table_name} WHERE provider_key = %s LIMIT 1",
+			$provider_key
+		);
+		$row          = $wpdb->get_row( $query, ARRAY_A );
+
+		if ( ! $row ) {
+			return null;
+		}
+
+		return $this->with_safe_view_fields( $row );
+	}
+
+	/**
+	 * Gets active providers.
+	 *
+	 * @return array
+	 */
+	public function get_active_providers() {
+		$providers = $this->get_providers();
+		return array_values(
+			array_filter(
+				$providers,
+				static function ( $provider ) {
+					return isset( $provider['status'] ) && 'active' === $provider['status'];
+				}
+			)
+		);
+	}
+
+	/**
+	 * Gets default provider from settings fallback to first active provider.
+	 *
+	 * @return array|null
+	 */
+	public function get_default_provider() {
+		$settings             = get_option( 'ai_seo_geo_settings', array() );
+		$default_provider_key = isset( $settings['default_provider_key'] ) ? sanitize_text_field( $settings['default_provider_key'] ) : '';
+
+		if ( '' !== $default_provider_key ) {
+			$provider = $this->get_provider_by_key( $default_provider_key );
+			if ( $provider && 'active' === $provider['status'] ) {
+				return $provider;
+			}
+		}
+
+		$active = $this->get_active_providers();
+		return ! empty( $active ) ? $active[0] : null;
+	}
+
+	/**
+	 * Calls provider by provider ID.
+	 *
+	 * @param int   $provider_id Provider ID.
+	 * @param array $messages    Chat messages.
+	 * @param array $options     Runtime options.
+	 *
+	 * @return array
+	 */
+	public function call_provider_by_id( $provider_id, $messages, $options = array() ) {
+		$provider = $this->get_provider( $provider_id );
+		if ( ! $provider ) {
+			return $this->build_error_result( __( 'Provider not found.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		return $this->call_provider( $provider, $messages, $options );
+	}
+
+	/**
+	 * Calls provider by key.
+	 *
+	 * @param string $provider_key Provider key.
+	 * @param array  $messages     Chat messages.
+	 * @param array  $options      Runtime options.
+	 *
+	 * @return array
+	 */
+	public function call_provider_by_key( $provider_key, $messages, $options = array() ) {
+		$provider = $this->get_provider_by_key( $provider_key );
+		if ( ! $provider ) {
+			return $this->build_error_result( __( 'Provider not found.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		return $this->call_provider( $provider, $messages, $options );
+	}
+
+	/**
+	 * Calls default provider.
+	 *
+	 * @param array $messages Chat messages.
+	 * @param array $options  Runtime options.
+	 *
+	 * @return array
+	 */
+	public function call_default_provider( $messages, $options = array() ) {
+		$provider = $this->get_default_provider();
+		if ( ! $provider ) {
+			return $this->build_error_result( __( 'No active provider available.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		return $this->call_provider( $provider, $messages, $options );
 	}
 
 	/**
@@ -134,42 +243,24 @@ class AI_SEO_GEO_AI_Provider_Manager {
 		$provider_name = AI_SEO_GEO_Security::sanitize_text( $raw_input['provider_name'] ?? '' );
 		$base_url      = untrailingslashit( AI_SEO_GEO_Security::sanitize_url( $raw_input['base_url'] ?? '' ) );
 		$default_model = AI_SEO_GEO_Security::sanitize_text( $raw_input['default_model'] ?? '' );
-		$timeout       = absint( $raw_input['timeout'] ?? 60 );
+		$timeout       = max( 10, min( 300, absint( $raw_input['timeout'] ?? 60 ) ) );
 		$status        = AI_SEO_GEO_Security::sanitize_text( $raw_input['status'] ?? 'inactive' );
 		$api_key_raw   = AI_SEO_GEO_Security::sanitize_text( $raw_input['api_key'] ?? '' );
-
-		if ( $timeout < 10 ) {
-			$timeout = 10;
-		}
-		if ( $timeout > 300 ) {
-			$timeout = 300;
-		}
 
 		if ( ! in_array( $status, array( 'active', 'inactive' ), true ) ) {
 			$status = 'inactive';
 		}
 
 		if ( empty( $provider_key ) || empty( $provider_name ) || empty( $base_url ) ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Provider key, provider name, and base URL are required.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Provider key, provider name, and base URL are required.', 'ai-seo-geo-optimizer' ) );
 		}
 
-		if ( 0 === $provider_id ) {
-			if ( empty( $api_key_raw ) ) {
-				return array(
-					'success' => false,
-					'message' => __( 'API key is required when creating a provider.', 'ai-seo-geo-optimizer' ),
-				);
-			}
+		if ( 0 === $provider_id && empty( $api_key_raw ) ) {
+			return array( 'success' => false, 'message' => __( 'API key is required when creating a provider.', 'ai-seo-geo-optimizer' ) );
+		}
 
-			if ( $this->provider_key_exists( $provider_key ) ) {
-				return array(
-					'success' => false,
-					'message' => __( 'Provider key already exists. Please use another key.', 'ai-seo-geo-optimizer' ),
-				);
-			}
+		if ( 0 === $provider_id && $this->provider_key_exists( $provider_key ) ) {
+			return array( 'success' => false, 'message' => __( 'Provider key already exists. Please use another key.', 'ai-seo-geo-optimizer' ) );
 		}
 
 		$encrypted_api_key = '';
@@ -192,23 +283,12 @@ class AI_SEO_GEO_AI_Provider_Manager {
 
 		if ( 0 === $provider_id ) {
 			$data['created_at'] = current_time( 'mysql' );
-			$inserted           = $wpdb->insert(
-				$this->table_name,
-				$data,
-				array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
-			);
-
+			$inserted           = $wpdb->insert( $this->table_name, $data, array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ) );
 			if ( false === $inserted ) {
-				return array(
-					'success' => false,
-					'message' => __( 'Failed to create provider. Please try again.', 'ai-seo-geo-optimizer' ),
-				);
+				return array( 'success' => false, 'message' => __( 'Failed to create provider. Please try again.', 'ai-seo-geo-optimizer' ) );
 			}
 
-			return array(
-				'success' => true,
-				'message' => __( 'Provider created successfully.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => true, 'message' => __( 'Provider created successfully.', 'ai-seo-geo-optimizer' ) );
 		}
 
 		$updated = $wpdb->update(
@@ -220,16 +300,10 @@ class AI_SEO_GEO_AI_Provider_Manager {
 		);
 
 		if ( false === $updated ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Failed to update provider. Please try again.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Failed to update provider. Please try again.', 'ai-seo-geo-optimizer' ) );
 		}
 
-		return array(
-			'success' => true,
-			'message' => __( 'Provider updated successfully.', 'ai-seo-geo-optimizer' ),
-		);
+		return array( 'success' => true, 'message' => __( 'Provider updated successfully.', 'ai-seo-geo-optimizer' ) );
 	}
 
 	/**
@@ -244,35 +318,19 @@ class AI_SEO_GEO_AI_Provider_Manager {
 
 		$provider_id = absint( $provider_id );
 		$provider    = $this->get_provider( $provider_id );
-
 		if ( ! $provider ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Provider not found.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Provider not found.', 'ai-seo-geo-optimizer' ) );
 		}
 
-		$deleted = $wpdb->delete(
-			$this->table_name,
-			array( 'id' => $provider_id ),
-			array( '%d' )
-		);
-
+		$deleted = $wpdb->delete( $this->table_name, array( 'id' => $provider_id ), array( '%d' ) );
 		if ( false === $deleted ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Failed to delete provider.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Failed to delete provider.', 'ai-seo-geo-optimizer' ) );
 		}
 
 		$this->log_manager->add_log(
 			array(
 				'action'       => 'provider_deleted',
-				'message'      => sprintf(
-					/* translators: %s provider key. */
-					__( 'Provider deleted: %s', 'ai-seo-geo-optimizer' ),
-					$provider['provider_key']
-				),
+				'message'      => sprintf( __( 'Provider deleted: %s', 'ai-seo-geo-optimizer' ), $provider['provider_key'] ),
 				'context_json' => array(
 					'provider_id'  => $provider_id,
 					'provider_key' => $provider['provider_key'],
@@ -280,10 +338,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			)
 		);
 
-		return array(
-			'success' => true,
-			'message' => __( 'Provider deleted successfully.', 'ai-seo-geo-optimizer' ),
-		);
+		return array( 'success' => true, 'message' => __( 'Provider deleted successfully.', 'ai-seo-geo-optimizer' ) );
 	}
 
 	/**
@@ -299,38 +354,26 @@ class AI_SEO_GEO_AI_Provider_Manager {
 
 		$status = AI_SEO_GEO_Security::sanitize_text( $status );
 		if ( ! in_array( $status, array( 'active', 'inactive' ), true ) ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Invalid provider status.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Invalid provider status.', 'ai-seo-geo-optimizer' ) );
 		}
 
 		$updated = $wpdb->update(
 			$this->table_name,
-			array(
-				'status'     => $status,
-				'updated_at' => current_time( 'mysql' ),
-			),
+			array( 'status' => $status, 'updated_at' => current_time( 'mysql' ) ),
 			array( 'id' => absint( $provider_id ) ),
 			array( '%s', '%s' ),
 			array( '%d' )
 		);
 
 		if ( false === $updated ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Failed to update provider status.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Failed to update provider status.', 'ai-seo-geo-optimizer' ) );
 		}
 
-		return array(
-			'success' => true,
-			'message' => __( 'Provider status updated.', 'ai-seo-geo-optimizer' ),
-		);
+		return array( 'success' => true, 'message' => __( 'Provider status updated.', 'ai-seo-geo-optimizer' ) );
 	}
 
 	/**
-	 * Tests provider connection.
+	 * Tests provider connection by provider ID.
 	 *
 	 * @param int $provider_id Provider ID.
 	 *
@@ -338,87 +381,152 @@ class AI_SEO_GEO_AI_Provider_Manager {
 	 */
 	public function test_connection( $provider_id ) {
 		$provider = $this->get_provider( $provider_id );
-
 		if ( ! $provider ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Provider not found.', 'ai-seo-geo-optimizer' ),
-			);
+			return array( 'success' => false, 'message' => __( 'Provider not found.', 'ai-seo-geo-optimizer' ) );
 		}
 
-		$provider_handler = $this->get_provider_handler( $provider['provider_key'] );
-		$api_key          = $this->decrypt_api_key( $provider['api_key_encrypted'] );
+		$instance = $this->get_provider_instance( $provider );
+		$result   = $instance->test_connection();
 
-		if ( empty( $api_key ) ) {
-			return array(
-				'success' => false,
-				'message' => __( 'API key is missing. Please update and try again.', 'ai-seo-geo-optimizer' ),
-			);
-		}
-
-		$endpoint = untrailingslashit( $provider['base_url'] ) . $provider_handler->get_test_endpoint_path();
-		$model    = ! empty( $provider['default_model'] ) ? $provider['default_model'] : $provider_handler->get_default_model();
-
-		if ( empty( $model ) ) {
-			return array(
-				'success' => false,
-				'message' => __( 'Default model is empty. Please set a model and retry.', 'ai-seo-geo-optimizer' ),
-			);
-		}
-
-		$response = wp_remote_post(
-			$endpoint,
-			array(
-				'timeout' => absint( $provider['timeout'] ),
-				'headers' => array(
-					'Authorization' => 'Bearer ' . $api_key,
-					'Content-Type'  => 'application/json',
-				),
-				'body'    => wp_json_encode( $provider_handler->build_test_request_body( $model ) ),
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			return array(
-				'success' => false,
-				'message' => sprintf(
-					/* translators: %s error message. */
-					__( 'Connection failed: %s', 'ai-seo-geo-optimizer' ),
-					esc_html( $response->get_error_message() )
-				),
-			);
-		}
-
-		$status_code = (int) wp_remote_retrieve_response_code( $response );
-		$body        = (string) wp_remote_retrieve_body( $response );
-		$json        = json_decode( $body, true );
-
-		if ( $status_code >= 200 && $status_code < 300 ) {
-			return array(
-				'success' => true,
-				'message' => __( 'Connection test passed.', 'ai-seo-geo-optimizer' ),
-			);
-		}
-
-		$error_message = __( 'Provider returned an unexpected error.', 'ai-seo-geo-optimizer' );
-
-		if ( is_array( $json ) && isset( $json['error']['message'] ) ) {
-			$error_message = sanitize_text_field( $json['error']['message'] );
-		}
+		$this->log_provider_result( $provider, $result, 'test_connection' );
 
 		return array(
-			'success' => false,
-			'message' => sprintf(
-				/* translators: 1: status code, 2: error message. */
-				__( 'Connection failed (HTTP %1$d): %2$s', 'ai-seo-geo-optimizer' ),
-				$status_code,
-				esc_html( $error_message )
-			),
+			'success' => ! empty( $result['success'] ),
+			'message' => ! empty( $result['success'] )
+				? __( 'Provider is working normally.', 'ai-seo-geo-optimizer' )
+				: ( ! empty( $result['error'] ) ? $result['error'] : __( 'Connection test failed.', 'ai-seo-geo-optimizer' ) ),
 		);
 	}
 
 	/**
-	 * Checks if provider_key exists.
+	 * Calls provider instance with unified return structure.
+	 *
+	 * @param array $provider Provider row.
+	 * @param array $messages Messages.
+	 * @param array $options  Runtime options.
+	 *
+	 * @return array
+	 */
+	private function call_provider( $provider, $messages, $options ) {
+		if ( empty( $provider['status'] ) || 'active' !== $provider['status'] ) {
+			return $this->build_error_result( __( 'Selected provider is inactive.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		$instance = $this->get_provider_instance( $provider );
+		$result   = $instance->generate( $messages, $options );
+
+		$this->log_provider_result( $provider, $result, 'generate' );
+
+		return $this->normalize_result( $result, $provider );
+	}
+
+	/**
+	 * Gets provider implementation instance.
+	 *
+	 * @param array $provider Provider row.
+	 *
+	 * @return AI_SEO_GEO_AI_Provider_Interface
+	 */
+	private function get_provider_instance( $provider ) {
+		$config = array(
+			'provider_key'  => $provider['provider_key'],
+			'base_url'      => $provider['base_url'],
+			'default_model' => $provider['default_model'],
+			'timeout'       => absint( $provider['timeout'] ),
+			'api_key'       => $this->decrypt_api_key( $provider['api_key_encrypted'] ),
+		);
+
+		switch ( $provider['provider_key'] ) {
+			case 'openai':
+				return new AI_SEO_GEO_OpenAI_Provider( $config );
+			case 'deepseek':
+				return new AI_SEO_GEO_DeepSeek_Provider( $config );
+			case 'qwen':
+				return new AI_SEO_GEO_Qwen_Provider( $config );
+			case 'custom':
+			default:
+				return new AI_SEO_GEO_Custom_Provider( $config );
+		}
+	}
+
+	/**
+	 * Normalizes return structure.
+	 *
+	 * @param array $result   Provider result.
+	 * @param array $provider Provider row.
+	 *
+	 * @return array
+	 */
+	private function normalize_result( $result, $provider ) {
+		return array(
+			'success'      => ! empty( $result['success'] ),
+			'data'         => $result['data'] ?? array(),
+			'error'        => sanitize_text_field( (string) ( $result['error'] ?? '' ) ),
+			'raw_response' => (string) ( $result['raw_response'] ?? '' ),
+			'provider_key' => sanitize_text_field( (string) ( $result['provider_key'] ?? $provider['provider_key'] ) ),
+			'model'        => sanitize_text_field( (string) ( $result['model'] ?? $provider['default_model'] ) ),
+		);
+	}
+
+	/**
+	 * Adds safe display fields on provider row.
+	 *
+	 * @param array $provider Provider row.
+	 *
+	 * @return array
+	 */
+	private function with_safe_view_fields( $provider ) {
+		$provider['api_key_masked'] = $this->mask_api_key( $this->decrypt_api_key( $provider['api_key_encrypted'] ) );
+		return $provider;
+	}
+
+	/**
+	 * Logs provider request result.
+	 *
+	 * @param array  $provider Provider row.
+	 * @param array  $result   Result structure.
+	 * @param string $action   Action name.
+	 *
+	 * @return void
+	 */
+	private function log_provider_result( $provider, $result, $action ) {
+		$this->log_manager->add_log(
+			array(
+				'action'  => 'provider_' . sanitize_key( $action ),
+				'message' => ! empty( $result['success'] )
+					? sprintf( __( 'Provider %s request succeeded.', 'ai-seo-geo-optimizer' ), $provider['provider_key'] )
+					: sprintf( __( 'Provider %s request failed.', 'ai-seo-geo-optimizer' ), $provider['provider_key'] ),
+				'context_json' => array(
+					'provider_id'  => (int) $provider['id'],
+					'provider_key' => $provider['provider_key'],
+					'success'      => ! empty( $result['success'] ),
+					'error'        => sanitize_text_field( (string) ( $result['error'] ?? '' ) ),
+					'model'        => sanitize_text_field( (string) ( $result['model'] ?? $provider['default_model'] ) ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Builds unified error result.
+	 *
+	 * @param string $error Error message.
+	 *
+	 * @return array
+	 */
+	private function build_error_result( $error ) {
+		return array(
+			'success'      => false,
+			'data'         => array(),
+			'error'        => sanitize_text_field( $error ),
+			'raw_response' => '',
+			'provider_key' => '',
+			'model'        => '',
+		);
+	}
+
+	/**
+	 * Checks if provider key exists.
 	 *
 	 * @param string $provider_key Provider key.
 	 *
@@ -427,35 +535,8 @@ class AI_SEO_GEO_AI_Provider_Manager {
 	private function provider_key_exists( $provider_key ) {
 		global $wpdb;
 
-		$query = $wpdb->prepare(
-			"SELECT COUNT(1) FROM {$this->table_name} WHERE provider_key = %s",
-			$provider_key
-		);
-
-		$count = (int) $wpdb->get_var( $query );
-
-		return $count > 0;
-	}
-
-	/**
-	 * Gets provider handler by key.
-	 *
-	 * @param string $provider_key Provider key.
-	 *
-	 * @return AI_SEO_GEO_AI_Provider_Interface
-	 */
-	private function get_provider_handler( $provider_key ) {
-		switch ( $provider_key ) {
-			case 'openai':
-				return new AI_SEO_GEO_OpenAI_Provider();
-			case 'deepseek':
-				return new AI_SEO_GEO_DeepSeek_Provider();
-			case 'qwen':
-				return new AI_SEO_GEO_Qwen_Provider();
-			case 'custom':
-			default:
-				return new AI_SEO_GEO_Custom_Provider();
-		}
+		$query = $wpdb->prepare( "SELECT COUNT(1) FROM {$this->table_name} WHERE provider_key = %s", $provider_key );
+		return (int) $wpdb->get_var( $query ) > 0;
 	}
 
 	/**
@@ -500,17 +581,13 @@ class AI_SEO_GEO_AI_Provider_Manager {
 		}
 
 		$decoded = base64_decode( $encrypted, true );
-		if ( false !== $decoded ) {
-			return $decoded;
-		}
-
-		return '';
+		return false !== $decoded ? $decoded : '';
 	}
 
 	/**
 	 * Masks API key for output.
 	 *
-	 * @param string $api_key API key value.
+	 * @param string $api_key API key.
 	 *
 	 * @return string
 	 */

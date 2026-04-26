@@ -22,7 +22,7 @@ interface AI_SEO_GEO_AI_Provider_Interface {
 	public function get_provider_key();
 
 	/**
-	 * Gets provider label.
+	 * Gets provider name.
 	 *
 	 * @return string
 	 */
@@ -43,18 +43,19 @@ interface AI_SEO_GEO_AI_Provider_Interface {
 	public function get_default_model();
 
 	/**
-	 * Gets test endpoint path.
+	 * Generates completion data.
 	 *
-	 * @return string
-	 */
-	public function get_test_endpoint_path();
-
-	/**
-	 * Builds test request body.
-	 *
-	 * @param string $model Model name.
+	 * @param array $messages Chat messages.
+	 * @param array $options  Request options.
 	 *
 	 * @return array
 	 */
-	public function build_test_request_body( $model );
+	public function generate( $messages, $options = array() );
+
+	/**
+	 * Runs provider connection test.
+	 *
+	 * @return array
+	 */
+	public function test_connection();
 }
