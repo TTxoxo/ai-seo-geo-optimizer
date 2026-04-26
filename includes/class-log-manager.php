@@ -14,11 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class AI_SEO_GEO_Log_Manager {
 
-	/**
-	 * Log table name.
-	 *
-	 * @var string
-	 */
+	/** @var string */
 	private $table_name;
 
 	/**
@@ -82,8 +78,27 @@ class AI_SEO_GEO_Log_Manager {
 	public function get_recent_logs( $limit = 20 ) {
 		global $wpdb;
 
+		$query = $wpdb->prepare( "SELECT * FROM {$this->table_name} ORDER BY id DESC LIMIT %d", absint( $limit ) );
+		return $wpdb->get_results( $query, ARRAY_A );
+	}
+
+	/**
+	 * Retrieves log rows joined with post title and job status.
+	 *
+	 * @param int $limit Limit.
+	 *
+	 * @return array
+	 */
+	public function get_logs_with_context( $limit = 50 ) {
+		global $wpdb;
+		$jobs_table = $wpdb->prefix . 'ai_seo_jobs';
+
 		$query = $wpdb->prepare(
-			"SELECT * FROM {$this->table_name} ORDER BY id DESC LIMIT %d",
+			"SELECT l.*, p.post_title, j.status AS job_status
+			 FROM {$this->table_name} l
+			 LEFT JOIN {$wpdb->posts} p ON l.post_id = p.ID
+			 LEFT JOIN {$jobs_table} j ON l.job_id = j.id
+			 ORDER BY l.id DESC LIMIT %d",
 			absint( $limit )
 		);
 
