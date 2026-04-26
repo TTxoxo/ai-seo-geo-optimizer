@@ -16,3 +16,12 @@
 .ai-seo-geo-filters label {
 	font-weight: 600;
 }
+
+.ai-seo-geo-bulk-confirm {
+	margin-top: 16px;
+	padding: 16px 20px;
+}
+
+.ai-seo-geo-bulk-confirm ul {
+	margin-left: 18px;
+}

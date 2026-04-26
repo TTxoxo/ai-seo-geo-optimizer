@@ -145,6 +145,109 @@ class AI_SEO_GEO_Optimizer {
 	}
 
 	/**
+	 * Creates batch draft jobs only (no AI calls).
+	 *
+	 * @param array $input Batch payload.
+	 *
+	 * @return array
+	 */
+	public function create_batch_draft_jobs( $input ) {
+		$post_ids = isset( $input['post_ids'] ) && is_array( $input['post_ids'] ) ? array_map( 'absint', $input['post_ids'] ) : array();
+		$post_ids = array_values( array_unique( array_filter( $post_ids ) ) );
+
+		if ( empty( $post_ids ) ) {
+			return array( 'success' => false, 'message' => __( 'Please select at least one post.', 'ai-seo-geo-optimizer' ) );
+		}
+		if ( count( $post_ids ) > 10 ) {
+			return array( 'success' => false, 'message' => __( 'Maximum 10 items are allowed per batch draft.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		$provider_id = absint( $input['provider_id'] ?? 0 );
+		$provider    = $this->provider_manager->get_provider( $provider_id );
+		if ( ! $provider ) {
+			return array( 'success' => false, 'message' => __( 'Provider not found.', 'ai-seo-geo-optimizer' ) );
+		}
+		if ( 'active' !== $provider['status'] ) {
+			return array( 'success' => false, 'message' => __( 'Provider is not enabled.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		$model          = sanitize_text_field( $input['model'] ?? '' );
+		$target_keyword = sanitize_text_field( $input['target_keyword'] ?? '' );
+		$language       = sanitize_text_field( $input['language'] ?? 'en' );
+		$brand_tone     = sanitize_text_field( $input['brand_tone'] ?? 'professional' );
+		$fields         = isset( $input['fields'] ) && is_array( $input['fields'] )
+			? array_values( array_unique( array_map( 'sanitize_text_field', wp_unslash( $input['fields'] ) ) ) )
+			: array();
+
+		$batch_group_id = 'batch_' . gmdate( 'YmdHis' ) . '_' . wp_generate_password( 6, false, false );
+		$created_jobs   = array();
+		$skipped_posts  = array();
+
+		foreach ( $post_ids as $post_id ) {
+			$post = get_post( $post_id );
+			if ( ! $post ) {
+				$skipped_posts[] = $post_id;
+				continue;
+			}
+
+			$job_id = $this->create_job(
+				array(
+					'post_id'        => $post_id,
+					'post_type'      => $post->post_type,
+					'provider_key'   => $provider['provider_key'],
+					'model'          => '' !== $model ? $model : $provider['default_model'],
+					'status'         => 'batch_draft',
+					'target_keyword' => $target_keyword,
+					'language'       => $language,
+					'fields_json'    => wp_json_encode(
+						array(
+							'batch_group_id' => $batch_group_id,
+							'brand_tone'     => $brand_tone,
+							'selected_fields' => $fields,
+							'mode'           => 'draft_only',
+						)
+					),
+					'result_json'    => wp_json_encode( array() ),
+					'error_message'  => '',
+				)
+			);
+
+			if ( $job_id <= 0 ) {
+				$skipped_posts[] = $post_id;
+				continue;
+			}
+
+			$created_jobs[] = $job_id;
+
+			$this->log_manager->add_log(
+				array(
+					'job_id'       => $job_id,
+					'post_id'      => $post_id,
+					'action'       => 'batch_draft_created',
+					'message'      => __( 'Batch draft job created. Review is required before applying any changes.', 'ai-seo-geo-optimizer' ),
+					'context_json' => array(
+						'batch_group_id' => $batch_group_id,
+						'provider_key'   => $provider['provider_key'],
+						'model'          => '' !== $model ? $model : $provider['default_model'],
+					),
+				)
+			);
+		}
+
+		if ( empty( $created_jobs ) ) {
+			return array( 'success' => false, 'message' => __( 'No batch draft jobs were created.', 'ai-seo-geo-optimizer' ) );
+		}
+
+		return array(
+			'success'        => true,
+			'message'        => __( 'Batch draft jobs created successfully. Bulk queue execution is not enabled in this version.', 'ai-seo-geo-optimizer' ),
+			'batch_group_id' => $batch_group_id,
+			'created_jobs'   => $created_jobs,
+			'skipped_posts'  => $skipped_posts,
+		);
+	}
+
+	/**
 	 * Creates ai_seo_jobs record.
 	 *
 	 * @param array $data Job data.
