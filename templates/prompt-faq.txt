@@ -1,0 +1,18 @@
+Task: Generate factual SEO/GEO FAQ from the source content.
+
+Context:
+- Title: {{post_title}}
+- Target keyword: {{target_keyword}}
+- Language: {{language}}
+
+Content:
+{{post_content}}
+
+Rules:
+- Questions should match real user intent.
+- Answers must not invent facts.
+- If not sure, put notes into needs_human_review.
+- Keep concise and human-like.
+
+Output requirement:
+Return valid JSON only.

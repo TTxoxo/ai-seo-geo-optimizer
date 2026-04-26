@@ -1,0 +1,33 @@
+Task: Optimize the WooCommerce product content for SEO and GEO without changing facts.
+
+Context:
+- Site: {{site_name}} ({{site_url}})
+- Product/Post ID: {{post_id}}
+- Type: {{post_type}}
+- Product name: {{post_title}}
+- Excerpt: {{post_excerpt}}
+- Product categories: {{post_categories}}
+- Product tags: {{post_tags}}
+- Product attributes: {{product_attributes}}
+- Target keyword: {{target_keyword}}
+- Brand tone: {{brand_tone}}
+- Internal links: {{internal_links}}
+- Language: {{language}}
+
+Source content:
+{{post_content}}
+
+Strict authenticity rules:
+- Never invent specs, certificates, customer logos, export countries, prices, delivery dates, or guarantees.
+- Keep uncertain statements in needs_human_review.
+- Put removed unsupported claims in unsupported_claims_removed.
+- Keep natural, human editorial quality.
+
+SEO + GEO rules:
+- Detect search_intent.
+- Improve SEO title, meta description, and structure with H2/H3.
+- First section should define product, applications, audience, and decision value.
+- Include FAQ, internal_link_suggestions, image_alt_suggestions, schema_suggestion, geo_summary, fact_check_notes.
+
+Output requirement:
+Return valid JSON only. No markdown and no extra text.
