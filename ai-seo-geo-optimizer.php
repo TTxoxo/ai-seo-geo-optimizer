@@ -25,6 +25,12 @@ define( 'AI_SEO_GEO_URL', plugin_dir_url( __FILE__ ) );
 require_once AI_SEO_GEO_PATH . 'includes/class-installer.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-security.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-log-manager.php';
+require_once AI_SEO_GEO_PATH . 'includes/class-ai-provider-interface.php';
+require_once AI_SEO_GEO_PATH . 'includes/providers/class-openai-provider.php';
+require_once AI_SEO_GEO_PATH . 'includes/providers/class-deepseek-provider.php';
+require_once AI_SEO_GEO_PATH . 'includes/providers/class-qwen-provider.php';
+require_once AI_SEO_GEO_PATH . 'includes/providers/class-custom-provider.php';
+require_once AI_SEO_GEO_PATH . 'includes/class-ai-provider-manager.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-admin-menu.php';
 require_once AI_SEO_GEO_PATH . 'includes/class-plugin.php';
 
