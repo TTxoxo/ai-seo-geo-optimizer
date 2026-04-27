@@ -77,6 +77,7 @@ $provider_form = array(
 	'provider_name' => $editing_provider['provider_name'] ?? $template['provider_name'],
 	'base_url'      => $editing_provider['base_url'] ?? $template['base_url'],
 	'default_model' => $editing_provider['default_model'] ?? $template['default_model'],
+	'structured_output_mode' => $editing_provider['structured_output_mode'] ?? ( $template['structured_output_mode'] ?? 'auto' ),
 	'timeout'       => $editing_provider['timeout'] ?? 60,
 	'status'        => $editing_provider['status'] ?? 'active',
 	'api_key_mask'  => $editing_provider['api_key_masked'] ?? '—',
@@ -123,6 +124,16 @@ $provider_form = array(
 			<tr>
 				<th scope="row"><label for="default_model"><?php esc_html_e( 'Default Model', 'ai-seo-geo-optimizer' ); ?></label></th>
 				<td><input class="regular-text" type="text" id="default_model" name="default_model" value="<?php echo esc_attr( $provider_form['default_model'] ); ?>" /></td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="structured_output_mode"><?php esc_html_e( 'Structured Output Mode', 'ai-seo-geo-optimizer' ); ?></label></th>
+				<td>
+					<select id="structured_output_mode" name="structured_output_mode">
+						<option value="auto" <?php selected( $provider_form['structured_output_mode'], 'auto' ); ?>><?php esc_html_e( 'Auto', 'ai-seo-geo-optimizer' ); ?></option>
+						<option value="json_object" <?php selected( $provider_form['structured_output_mode'], 'json_object' ); ?>><?php esc_html_e( 'JSON Object', 'ai-seo-geo-optimizer' ); ?></option>
+						<option value="prompt_only" <?php selected( $provider_form['structured_output_mode'], 'prompt_only' ); ?>><?php esc_html_e( 'Prompt Only', 'ai-seo-geo-optimizer' ); ?></option>
+					</select>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="timeout"><?php esc_html_e( 'Timeout (seconds)', 'ai-seo-geo-optimizer' ); ?></label></th>

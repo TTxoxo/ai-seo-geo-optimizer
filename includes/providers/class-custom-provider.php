@@ -84,42 +84,33 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 		$endpoint_format = isset( $options['endpoint_format'] ) ? sanitize_text_field( $options['endpoint_format'] ) : 'chat_completions';
 		$endpoint_path   = 'responses' === $endpoint_format ? '/responses' : '/chat/completions';
 		$endpoint        = untrailingslashit( $config['base_url'] ) . $endpoint_path;
+		$initial_mode    = 'auto' === $config['structured_output_mode'] ? 'json_object' : $config['structured_output_mode'];
+		$fallback_mode   = '';
 
-		$request_body = 'responses' === $endpoint_format
-			? $this->build_responses_body( $messages, $config )
-			: $this->build_chat_completions_body( $messages, $config );
+		$attempt = $this->dispatch_request( $messages, $config, $endpoint, $endpoint_format, $initial_mode );
+		if ( ! $attempt['success'] && 'auto' === $config['structured_output_mode'] && 'json_object' === $initial_mode && $this->is_response_format_unsupported( $attempt['http_code'], $attempt['decoded'], $attempt['raw_response'] ) ) {
+			$fallback_mode = 'prompt_only';
+			$attempt       = $this->dispatch_request( $messages, $config, $endpoint, $endpoint_format, 'prompt_only' );
+		}
 
-		$response = wp_remote_post(
-			$endpoint,
-			array(
-				'timeout' => $config['timeout'],
-				'headers' => array(
-					'Authorization' => 'Bearer ' . $config['api_key'],
-					'Content-Type'  => 'application/json',
-				),
-				'body'    => wp_json_encode( $request_body ),
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
+		if ( empty( $attempt['success'] ) ) {
 			return $this->build_error_result(
-				sprintf(
-					/* translators: %s error detail. */
-					__( 'Network error: %s', 'ai-seo-geo-optimizer' ),
-					$response->get_error_message()
-				),
-				'',
-				$config['model']
+				$attempt['error'],
+				$attempt['raw_response'],
+				$config['model'],
+				array(
+					'http_status'           => (int) $attempt['http_code'],
+					'response_format_used'  => $initial_mode,
+					'fallback_mode'         => $fallback_mode,
+					'error_message'         => $attempt['error'],
+					'raw_response_preview'  => mb_substr( (string) $attempt['raw_response'], 0, 500 ),
+				)
 			);
 		}
 
-		$http_code    = (int) wp_remote_retrieve_response_code( $response );
-		$raw_response = (string) wp_remote_retrieve_body( $response );
-		$decoded      = json_decode( $raw_response, true );
-
-		if ( $http_code < 200 || $http_code >= 300 ) {
-			return $this->build_error_result( $this->map_http_error( $http_code, $decoded ), $raw_response, $config['model'] );
-		}
+		$http_code    = (int) $attempt['http_code'];
+		$raw_response = (string) $attempt['raw_response'];
+		$decoded      = $attempt['decoded'];
 
 		$content = $this->extract_content_from_response( $decoded, $endpoint_format );
 		if ( '' === $content ) {
@@ -140,6 +131,8 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 					'raw_response_preview'  => (string) ( $parsed_json['raw_preview'] ?? mb_substr( $raw_response, 0, 500 ) ),
 					'looks_like_markdown'   => ! empty( $parsed_json['markdown_wrapped'] ),
 					'looks_truncated'       => ! empty( $parsed_json['likely_truncated'] ),
+					'response_format_used'  => $initial_mode,
+					'fallback_mode'         => $fallback_mode,
 				)
 			);
 		}
@@ -199,6 +192,8 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 */
 	private function prepare_runtime_config( $options ) {
 		$model = ! empty( $options['model'] ) ? sanitize_text_field( $options['model'] ) : ( $this->config['default_model'] ?? $this->get_default_model() );
+		$structured_output_mode = ! empty( $options['structured_output_mode'] ) ? sanitize_text_field( $options['structured_output_mode'] ) : ( $this->config['structured_output_mode'] ?? 'auto' );
+		$expects_json = ! empty( $options['expects_json'] ) || ! empty( $options['require_json'] );
 
 		return array(
 			'base_url'    => ! empty( $options['base_url'] ) ? esc_url_raw( $options['base_url'] ) : ( $this->config['base_url'] ?? $this->get_default_base_url() ),
@@ -207,7 +202,8 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			'timeout'     => max( 5, absint( $options['timeout'] ?? ( $this->config['timeout'] ?? 60 ) ) ),
 			'temperature' => isset( $options['temperature'] ) ? (float) $options['temperature'] : 0.2,
 			'max_tokens'  => max( 1, absint( $options['max_tokens'] ?? 800 ) ),
-			'require_json'=> ! empty( $options['require_json'] ),
+			'require_json'=> $expects_json,
+			'structured_output_mode' => in_array( $structured_output_mode, array( 'auto', 'json_object', 'prompt_only' ), true ) ? $structured_output_mode : 'auto',
 		);
 	}
 
@@ -219,7 +215,7 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 *
 	 * @return array
 	 */
-	private function build_chat_completions_body( $messages, $config ) {
+	private function build_chat_completions_body( $messages, $config, $output_mode = 'auto' ) {
 		$body = array(
 			'model'       => $config['model'],
 			'messages'    => $messages,
@@ -227,7 +223,7 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			'max_tokens'  => $config['max_tokens'],
 		);
 
-		if ( $config['require_json'] ) {
+		if ( $config['require_json'] && 'prompt_only' !== $output_mode ) {
 			$body['response_format'] = array( 'type' => 'json_object' );
 		}
 
@@ -242,13 +238,111 @@ class AI_SEO_GEO_Custom_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 *
 	 * @return array
 	 */
-	private function build_responses_body( $messages, $config ) {
-		return array(
+	private function build_responses_body( $messages, $config, $output_mode = 'auto' ) {
+		$body = array(
 			'model'       => $config['model'],
 			'input'       => $messages,
 			'temperature' => $config['temperature'],
 			'max_output_tokens' => $config['max_tokens'],
 		);
+
+		if ( $config['require_json'] && 'prompt_only' !== $output_mode ) {
+			$body['response_format'] = array( 'type' => 'json_object' );
+		}
+
+		return $body;
+	}
+
+	/**
+	 * Sends one request attempt.
+	 *
+	 * @param array  $messages        Messages.
+	 * @param array  $config          Config.
+	 * @param string $endpoint        Endpoint URL.
+	 * @param string $endpoint_format Endpoint format.
+	 * @param string $output_mode     Output mode.
+	 *
+	 * @return array
+	 */
+	private function dispatch_request( $messages, $config, $endpoint, $endpoint_format, $output_mode ) {
+		$request_body = 'responses' === $endpoint_format
+			? $this->build_responses_body( $messages, $config, $output_mode )
+			: $this->build_chat_completions_body( $messages, $config, $output_mode );
+
+		$response = wp_remote_post(
+			$endpoint,
+			array(
+				'timeout' => $config['timeout'],
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $config['api_key'],
+					'Content-Type'  => 'application/json',
+				),
+				'body'    => wp_json_encode( $request_body ),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'success'      => false,
+				'http_code'    => 0,
+				'decoded'      => array(),
+				'raw_response' => '',
+				'error'        => sprintf( __( 'Network error: %s', 'ai-seo-geo-optimizer' ), $response->get_error_message() ),
+			);
+		}
+
+		$http_code    = (int) wp_remote_retrieve_response_code( $response );
+		$raw_response = (string) wp_remote_retrieve_body( $response );
+		$decoded      = json_decode( $raw_response, true );
+
+		if ( $http_code < 200 || $http_code >= 300 ) {
+			return array(
+				'success'      => false,
+				'http_code'    => $http_code,
+				'decoded'      => is_array( $decoded ) ? $decoded : array(),
+				'raw_response' => $raw_response,
+				'error'        => $this->map_http_error( $http_code, is_array( $decoded ) ? $decoded : array() ),
+			);
+		}
+
+		return array(
+			'success'      => true,
+			'http_code'    => $http_code,
+			'decoded'      => is_array( $decoded ) ? $decoded : array(),
+			'raw_response' => $raw_response,
+			'error'        => '',
+		);
+	}
+
+	/**
+	 * Detects response_format unsupported errors.
+	 *
+	 * @param int    $http_code    HTTP code.
+	 * @param array  $decoded      Decoded payload.
+	 * @param string $raw_response Raw response.
+	 *
+	 * @return bool
+	 */
+	private function is_response_format_unsupported( $http_code, $decoded, $raw_response ) {
+		if ( $http_code <= 0 ) {
+			return false;
+		}
+
+		$error_message = '';
+		if ( is_array( $decoded ) && isset( $decoded['error']['message'] ) ) {
+			$error_message = (string) $decoded['error']['message'];
+		}
+		if ( '' === $error_message ) {
+			$error_message = (string) $raw_response;
+		}
+
+		$error_message = strtolower( $error_message );
+		return false !== strpos( $error_message, 'response_format' )
+			&& (
+				false !== strpos( $error_message, 'unsupported' )
+				|| false !== strpos( $error_message, 'unknown parameter' )
+				|| false !== strpos( $error_message, 'invalid parameter' )
+			);
 	}
 
 	/**

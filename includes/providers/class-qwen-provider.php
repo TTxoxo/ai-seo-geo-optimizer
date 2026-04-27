@@ -81,6 +81,10 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			return $this->build_error_result( __( 'Provider configuration is incomplete.', 'ai-seo-geo-optimizer' ), '', $config['model'] );
 		}
 
+		if ( $config['require_json'] ) {
+			$messages = $this->ensure_json_keyword_messages( $messages );
+		}
+
 		$endpoint_format = isset( $options['endpoint_format'] ) ? sanitize_text_field( $options['endpoint_format'] ) : 'chat_completions';
 		$endpoint_path   = 'responses' === $endpoint_format ? '/responses' : '/chat/completions';
 		$endpoint        = untrailingslashit( $config['base_url'] ) . $endpoint_path;
@@ -118,7 +122,17 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 		$decoded      = json_decode( $raw_response, true );
 
 		if ( $http_code < 200 || $http_code >= 300 ) {
-			return $this->build_error_result( $this->map_http_error( $http_code, $decoded ), $raw_response, $config['model'] );
+			$error_message = $this->map_http_error( $http_code, $decoded );
+			$debug         = array();
+			if ( $config['require_json'] && $this->is_response_format_unsupported( $decoded, $raw_response ) ) {
+				$debug = array(
+					'response_format_used' => 'json_object',
+					'fallback_mode'        => 'none',
+					'http_status'          => $http_code,
+					'error_message'        => $error_message,
+				);
+			}
+			return $this->build_error_result( $error_message, $raw_response, $config['model'], $debug );
 		}
 
 		$content = $this->extract_content_from_response( $decoded, $endpoint_format );
@@ -199,6 +213,8 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 */
 	private function prepare_runtime_config( $options ) {
 		$model = ! empty( $options['model'] ) ? sanitize_text_field( $options['model'] ) : ( $this->config['default_model'] ?? $this->get_default_model() );
+		$structured_output_mode = ! empty( $options['structured_output_mode'] ) ? sanitize_text_field( $options['structured_output_mode'] ) : ( $this->config['structured_output_mode'] ?? 'json_object' );
+		$expects_json = ! empty( $options['expects_json'] ) || ! empty( $options['require_json'] );
 
 		return array(
 			'base_url'    => ! empty( $options['base_url'] ) ? esc_url_raw( $options['base_url'] ) : ( $this->config['base_url'] ?? $this->get_default_base_url() ),
@@ -207,7 +223,8 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			'timeout'     => max( 5, absint( $options['timeout'] ?? ( $this->config['timeout'] ?? 60 ) ) ),
 			'temperature' => isset( $options['temperature'] ) ? (float) $options['temperature'] : 0.2,
 			'max_tokens'  => max( 1, absint( $options['max_tokens'] ?? 800 ) ),
-			'require_json'=> ! empty( $options['require_json'] ),
+			'require_json'=> $expects_json,
+			'structured_output_mode' => in_array( $structured_output_mode, array( 'auto', 'json_object', 'prompt_only' ), true ) ? $structured_output_mode : 'json_object',
 		);
 	}
 
@@ -227,7 +244,7 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			'max_tokens'  => $config['max_tokens'],
 		);
 
-		if ( $config['require_json'] ) {
+		if ( $config['require_json'] && 'prompt_only' !== $config['structured_output_mode'] ) {
 			$body['response_format'] = array( 'type' => 'json_object' );
 		}
 
@@ -243,12 +260,74 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 * @return array
 	 */
 	private function build_responses_body( $messages, $config ) {
-		return array(
+		$body = array(
 			'model'       => $config['model'],
 			'input'       => $messages,
 			'temperature' => $config['temperature'],
 			'max_output_tokens' => $config['max_tokens'],
 		);
+
+		if ( $config['require_json'] && 'prompt_only' !== $config['structured_output_mode'] ) {
+			$body['response_format'] = array( 'type' => 'json_object' );
+		}
+
+		return $body;
+	}
+
+	/**
+	 * Ensures JSON keyword exists in messages for strict provider parsing.
+	 *
+	 * @param array $messages Messages.
+	 *
+	 * @return array
+	 */
+	private function ensure_json_keyword_messages( $messages ) {
+		$messages = is_array( $messages ) ? $messages : array();
+		$has_json_keyword = false;
+
+		foreach ( $messages as $message ) {
+			if ( ! empty( $message['content'] ) && false !== stripos( (string) $message['content'], 'json' ) ) {
+				$has_json_keyword = true;
+				break;
+			}
+		}
+
+		if ( ! $has_json_keyword ) {
+			array_unshift(
+				$messages,
+				array(
+					'role'    => 'system',
+					'content' => 'You must return valid JSON only.',
+				)
+			);
+		}
+
+		return $messages;
+	}
+
+	/**
+	 * Detects response_format unsupported errors.
+	 *
+	 * @param array  $decoded      Decoded payload.
+	 * @param string $raw_response Raw response.
+	 *
+	 * @return bool
+	 */
+	private function is_response_format_unsupported( $decoded, $raw_response ) {
+		$message = '';
+		if ( is_array( $decoded ) && isset( $decoded['error']['message'] ) ) {
+			$message = (string) $decoded['error']['message'];
+		}
+		if ( '' === $message ) {
+			$message = (string) $raw_response;
+		}
+		$message = strtolower( $message );
+		return false !== strpos( $message, 'response_format' )
+			&& (
+				false !== strpos( $message, 'unsupported' )
+				|| false !== strpos( $message, 'unknown parameter' )
+				|| false !== strpos( $message, 'invalid parameter' )
+			);
 	}
 
 	/**

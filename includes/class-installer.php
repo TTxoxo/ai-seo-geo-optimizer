@@ -45,6 +45,7 @@ class AI_SEO_GEO_Installer {
 			base_url TEXT NOT NULL,
 			api_key_encrypted TEXT NOT NULL,
 			default_model VARCHAR(200) NOT NULL,
+			structured_output_mode VARCHAR(20) NOT NULL DEFAULT 'auto',
 			timeout INT NOT NULL DEFAULT 60,
 			status VARCHAR(20) NOT NULL DEFAULT 'active',
 			created_at DATETIME NOT NULL,

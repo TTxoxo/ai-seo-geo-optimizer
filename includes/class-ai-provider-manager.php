@@ -52,11 +52,17 @@ class AI_SEO_GEO_AI_Provider_Manager {
 
 		$templates = array();
 		foreach ( $providers as $provider ) {
+			$default_mode = 'auto';
+			if ( in_array( $provider->get_provider_key(), array( 'qwen', 'deepseek' ), true ) ) {
+				$default_mode = 'json_object';
+			}
+
 			$templates[ $provider->get_provider_key() ] = array(
 				'provider_key'  => $provider->get_provider_key(),
 				'provider_name' => $provider->get_provider_name(),
 				'base_url'      => $provider->get_default_base_url(),
 				'default_model' => $provider->get_default_model(),
+				'structured_output_mode' => $default_mode,
 			);
 		}
 
@@ -243,6 +249,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 		$provider_name = AI_SEO_GEO_Security::sanitize_text( $raw_input['provider_name'] ?? '' );
 		$base_url      = untrailingslashit( AI_SEO_GEO_Security::sanitize_url( $raw_input['base_url'] ?? '' ) );
 		$default_model = AI_SEO_GEO_Security::sanitize_text( $raw_input['default_model'] ?? '' );
+		$structured_output_mode = AI_SEO_GEO_Security::sanitize_text( $raw_input['structured_output_mode'] ?? '' );
 		$timeout       = max( 10, min( 300, absint( $raw_input['timeout'] ?? 60 ) ) );
 		$status        = AI_SEO_GEO_Security::sanitize_text( $raw_input['status'] ?? 'inactive' );
 		$api_key_raw   = AI_SEO_GEO_Security::sanitize_text( $raw_input['api_key'] ?? '' );
@@ -270,12 +277,22 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			$encrypted_api_key = $existing['api_key_encrypted'];
 		}
 
+		$allowed_modes = array( 'auto', 'json_object', 'prompt_only' );
+		if ( ! in_array( $structured_output_mode, $allowed_modes, true ) ) {
+			if ( in_array( $provider_key, array( 'qwen', 'deepseek' ), true ) ) {
+				$structured_output_mode = 'json_object';
+			} else {
+				$structured_output_mode = 'auto';
+			}
+		}
+
 		$data = array(
 			'provider_key'      => $provider_key,
 			'provider_name'     => $provider_name,
 			'base_url'          => $base_url,
 			'api_key_encrypted' => $encrypted_api_key,
 			'default_model'     => $default_model,
+			'structured_output_mode' => $structured_output_mode,
 			'timeout'           => $timeout,
 			'status'            => $status,
 			'updated_at'        => current_time( 'mysql' ),
@@ -283,7 +300,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 
 		if ( 0 === $provider_id ) {
 			$data['created_at'] = current_time( 'mysql' );
-			$inserted           = $wpdb->insert( $this->table_name, $data, array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ) );
+			$inserted           = $wpdb->insert( $this->table_name, $data, array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' ) );
 			if ( false === $inserted ) {
 				return array( 'success' => false, 'message' => __( 'Failed to create provider. Please try again.', 'ai-seo-geo-optimizer' ) );
 			}
@@ -295,7 +312,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			$this->table_name,
 			$data,
 			array( 'id' => $provider_id ),
-			array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' ),
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' ),
 			array( '%d' )
 		);
 
@@ -432,6 +449,7 @@ class AI_SEO_GEO_AI_Provider_Manager {
 			'provider_key'  => $provider['provider_key'],
 			'base_url'      => $provider['base_url'],
 			'default_model' => $provider['default_model'],
+			'structured_output_mode' => isset( $provider['structured_output_mode'] ) ? sanitize_text_field( $provider['structured_output_mode'] ) : 'auto',
 			'timeout'       => absint( $provider['timeout'] ),
 			'api_key'       => $this->decrypt_api_key( $provider['api_key_encrypted'] ),
 		);
@@ -511,6 +529,8 @@ class AI_SEO_GEO_AI_Provider_Manager {
 					'http_status'  => isset( $debug['http_status'] ) ? absint( $debug['http_status'] ) : 0,
 					'json_error'   => sanitize_text_field( (string) ( $debug['json_error'] ?? '' ) ),
 					'raw_response_preview' => sanitize_textarea_field( $raw_response_preview ),
+					'response_format_used' => sanitize_text_field( (string) ( $debug['response_format_used'] ?? '' ) ),
+					'fallback_mode' => sanitize_text_field( (string) ( $debug['fallback_mode'] ?? '' ) ),
 				),
 			)
 		);
