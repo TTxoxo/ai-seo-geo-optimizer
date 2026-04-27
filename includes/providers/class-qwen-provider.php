@@ -126,7 +126,8 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			return $this->build_error_result( __( 'Empty response from provider.', 'ai-seo-geo-optimizer' ), $raw_response, $config['model'] );
 		}
 
-		$parsed_json = $this->decode_json_with_cleanup( $content );
+		$structured_output_manager = new AI_SEO_GEO_Structured_Output_Manager();
+		$parsed_json               = $structured_output_manager->parse_json_response( $content );
 		if ( ! $parsed_json['success'] ) {
 			return $this->build_error_result(
 				$parsed_json['error'],
@@ -136,9 +137,9 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 					'is_json_parse_failed'  => true,
 					'http_status'           => $http_code,
 					'json_error'            => $parsed_json['json_error'] ?? '',
-					'raw_response_preview'  => mb_substr( $raw_response, 0, 500 ),
-					'looks_like_markdown'   => ! empty( $parsed_json['looks_like_markdown'] ),
-					'looks_truncated'       => ! empty( $parsed_json['looks_truncated'] ),
+					'raw_response_preview'  => (string) ( $parsed_json['raw_preview'] ?? mb_substr( $raw_response, 0, 500 ) ),
+					'looks_like_markdown'   => ! empty( $parsed_json['markdown_wrapped'] ),
+					'looks_truncated'       => ! empty( $parsed_json['likely_truncated'] ),
 				)
 			);
 		}
@@ -290,41 +291,8 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 * @return array
 	 */
 	private function decode_json_with_cleanup( $content ) {
-		$decoded = json_decode( trim( $content ), true );
-		if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
-			return array( 'success' => true, 'data' => $decoded, 'error' => '' );
-		}
-
-		$cleaned = preg_replace( '/^```(?:json)?\s*/i', '', trim( $content ) );
-		$cleaned = preg_replace( '/\s*```$/', '', (string) $cleaned );
-		$cleaned = trim( (string) $cleaned );
-
-		$decoded = json_decode( $cleaned, true );
-		if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
-			return array( 'success' => true, 'data' => $decoded, 'error' => '' );
-		}
-
-		$start = strpos( $cleaned, '{' );
-		$end   = strrpos( $cleaned, '}' );
-		if ( false !== $start && false !== $end && $end > $start ) {
-			$json_block = substr( $cleaned, $start, ( $end - $start + 1 ) );
-			$decoded    = json_decode( $json_block, true );
-			if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
-				return array( 'success' => true, 'data' => $decoded, 'error' => '' );
-			}
-		}
-
-		$looks_like_markdown = (bool) preg_match( '/```/m', $content );
-		$looks_truncated     = false === $end || $end < $start;
-
-		return array(
-			'success'             => false,
-			'data'                => array(),
-			'error'               => __( 'JSON parse failed from AI response.', 'ai-seo-geo-optimizer' ),
-			'json_error'          => json_last_error_msg(),
-			'looks_like_markdown' => $looks_like_markdown,
-			'looks_truncated'     => $looks_truncated,
-		);
+		$structured_output_manager = new AI_SEO_GEO_Structured_Output_Manager();
+		return $structured_output_manager->parse_json_response( $content );
 	}
 
 	/**
