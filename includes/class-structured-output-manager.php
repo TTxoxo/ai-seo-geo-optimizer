@@ -207,6 +207,153 @@ class AI_SEO_GEO_Structured_Output_Manager {
 	}
 
 	/**
+	 * Gets OpenAI json_schema payload for seo_geo_suggestion.
+	 *
+	 * @return array
+	 */
+	public function get_seo_geo_suggestion_schema() {
+		return array(
+			'type'                 => 'object',
+			'additionalProperties' => false,
+			'required'             => array(
+				'search_intent',
+				'primary_keyword',
+				'secondary_keywords',
+				'seo_title',
+				'meta_description',
+				'slug_suggestion',
+				'h1',
+				'suggested_tags',
+				'excerpt',
+				'outline',
+				'optimized_content',
+				'faq',
+				'internal_link_suggestions',
+				'image_alt_suggestions',
+				'schema_suggestion',
+				'geo_summary',
+				'fact_check_notes',
+				'needs_human_review',
+				'unsupported_claims_removed',
+				'content_score',
+				'risk_level',
+			),
+			'properties'           => array(
+				'search_intent'             => array( 'type' => 'string' ),
+				'primary_keyword'           => array( 'type' => 'string' ),
+				'secondary_keywords'        => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'seo_title'                 => array( 'type' => 'string' ),
+				'meta_description'          => array( 'type' => 'string' ),
+				'slug_suggestion'           => array( 'type' => 'string' ),
+				'h1'                        => array( 'type' => 'string' ),
+				'suggested_tags'            => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'excerpt'                   => array( 'type' => 'string' ),
+				'outline'                   => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'required'             => array( 'heading', 'purpose' ),
+						'properties'           => array(
+							'heading' => array( 'type' => 'string' ),
+							'purpose' => array( 'type' => 'string' ),
+						),
+					),
+				),
+				'optimized_content'         => array( 'type' => 'string' ),
+				'faq'                       => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'required'             => array( 'question', 'answer' ),
+						'properties'           => array(
+							'question' => array( 'type' => 'string' ),
+							'answer'   => array( 'type' => 'string' ),
+						),
+					),
+				),
+				'internal_link_suggestions' => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'required'             => array( 'anchor', 'target_url', 'reason' ),
+						'properties'           => array(
+							'anchor'     => array( 'type' => 'string' ),
+							'target_url' => array( 'type' => 'string' ),
+							'reason'     => array( 'type' => 'string' ),
+						),
+					),
+				),
+				'image_alt_suggestions'     => array(
+					'type'  => 'array',
+					'items' => array(
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'required'             => array( 'image_id', 'alt_text', 'reason' ),
+						'properties'           => array(
+							'image_id' => array( 'type' => 'string' ),
+							'alt_text' => array( 'type' => 'string' ),
+							'reason'   => array( 'type' => 'string' ),
+						),
+					),
+				),
+				'schema_suggestion'         => array(
+					'type'                 => 'object',
+					'additionalProperties' => true,
+					'required'             => array( '@type', 'fields' ),
+					'properties'           => array(
+						'@type'  => array( 'type' => 'string' ),
+						'fields' => array(
+							'type'                 => 'object',
+							'additionalProperties' => true,
+						),
+					),
+				),
+				'geo_summary'               => array( 'type' => 'string' ),
+				'fact_check_notes'          => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'needs_human_review'        => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'unsupported_claims_removed'=> array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'content_score'             => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+					'required'             => array(
+						'seo_score',
+						'geo_score',
+						'readability_score',
+						'trust_score',
+						'risk_score',
+					),
+					'properties'           => array(
+						'seo_score'         => array( 'type' => 'integer' ),
+						'geo_score'         => array( 'type' => 'integer' ),
+						'readability_score' => array( 'type' => 'integer' ),
+						'trust_score'       => array( 'type' => 'integer' ),
+						'risk_score'        => array( 'type' => 'integer' ),
+					),
+				),
+				'risk_level'                => array( 'type' => 'string' ),
+			),
+		);
+	}
+
+	/**
 	 * Determines if content looks truncated.
 	 *
 	 * @param string $content Content string.
@@ -244,4 +391,3 @@ class AI_SEO_GEO_Structured_Output_Manager {
 		return 1 === preg_match( '/^```(?:json)?[\s\S]*```$/i', $content );
 	}
 }
-
