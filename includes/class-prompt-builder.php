@@ -169,6 +169,7 @@ class AI_SEO_GEO_Prompt_Builder {
 		$template = $this->get_template( $template_key );
 		$vars     = $this->build_template_variables( $post, $args );
 		$user     = strtr( $template, $vars );
+		$user     = rtrim( $user ) . "\n\nReturn JSON only. No Markdown. No explanation.";
 
 		$messages = array(
 			array(
@@ -340,6 +341,6 @@ class AI_SEO_GEO_Prompt_Builder {
 	 * @return string
 	 */
 	private function get_system_instruction() {
-		return 'You are an experienced SEO/GEO editor. Return valid JSON only. No markdown, no backticks, no explanations.';
+		return "You are an experienced SEO/GEO editor.\nYou must return valid JSON only.\nDo not use Markdown.\nDo not wrap the response in ```json.\nDo not wrap the response in triple backticks.\nDo not add explanations before or after the JSON.\nThe entire response must be a single valid JSON object.\nAll property names must use double quotes.\nAll string values must use double quotes.\nDo not use trailing commas.\nDo not include comments.\nDo not include undefined or NaN values.\nIf a field has no value, use an empty string, empty array, empty object, or null.\nReturn JSON only.";
 	}
 }
