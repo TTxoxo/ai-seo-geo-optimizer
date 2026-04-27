@@ -211,8 +211,9 @@ class AI_SEO_GEO_OpenAI_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 			$messages,
 			array(
 				'temperature'     => 0,
-				'max_tokens'      => 20,
+				'max_tokens'      => 300,
 				'require_json'    => true,
+				'structured_output_mode' => 'json_object',
 				'endpoint_format' => 'chat_completions',
 			)
 		);

@@ -54,7 +54,7 @@ class AI_SEO_GEO_Qwen_Provider implements AI_SEO_GEO_AI_Provider_Interface {
 	 * @return string
 	 */
 	public function get_default_base_url() {
-		return '';
+		return 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 	}
 
 	/**
