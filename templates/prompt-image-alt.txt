@@ -1,0 +1,19 @@
+Task: Suggest factual and descriptive image alt texts.
+
+Context:
+- Title: {{post_title}}
+- Post type: {{post_type}}
+- Categories: {{post_categories}}
+- Tags: {{post_tags}}
+- Language: {{language}}
+
+Content:
+{{post_content}}
+
+Rules:
+- Do not invent visual details that are not supported by context.
+- Keep alt text descriptive and concise.
+- Add uncertain assumptions to needs_human_review.
+
+Output requirement:
+Return valid JSON only.

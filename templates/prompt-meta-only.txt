@@ -1,0 +1,22 @@
+Task: Improve only SEO metadata based on provided content context.
+
+Context:
+- Site: {{site_name}} ({{site_url}})
+- Post ID: {{post_id}}
+- Title: {{post_title}}
+- Excerpt: {{post_excerpt}}
+- Target keyword: {{target_keyword}}
+- Language: {{language}}
+
+Content:
+{{post_content}}
+
+Rules:
+- Do not change facts.
+- No exaggeration, no keyword stuffing.
+- SEO title must include primary keyword naturally.
+- Meta description should be concise and human-like.
+- If uncertain about claims, record in needs_human_review.
+
+Output requirement:
+Return valid JSON only.
