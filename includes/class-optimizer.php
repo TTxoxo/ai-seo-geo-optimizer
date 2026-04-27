@@ -76,6 +76,8 @@ class AI_SEO_GEO_Optimizer {
 		$fields         = isset( $input['fields'] ) && is_array( $input['fields'] )
 			? array_map( 'sanitize_text_field', wp_unslash( $input['fields'] ) )
 			: array();
+		$requested_max_tokens = absint( $input['max_tokens'] ?? 0 );
+		$max_tokens           = $this->resolve_max_tokens( $fields, $requested_max_tokens );
 
 		$prompt_result = $this->prompt_builder->build_messages(
 			$post_id,
@@ -96,8 +98,18 @@ class AI_SEO_GEO_Optimizer {
 			array(
 				'model'        => $model,
 				'require_json' => true,
+				'max_tokens'   => $max_tokens,
 			)
 		);
+
+		$estimated_input_length = $this->estimate_messages_length( $prompt_result['messages'] );
+		$provider_debug         = isset( $provider_result['debug'] ) && is_array( $provider_result['debug'] ) ? $provider_result['debug'] : array();
+		$is_json_parse_failed   = ! empty( $provider_debug['is_json_parse_failed'] );
+		$likely_truncated       = ! empty( $provider_debug['likely_truncated'] ) || ! empty( $provider_debug['looks_truncated'] );
+		if ( $is_json_parse_failed && $this->is_raw_response_tail_incomplete( $provider_debug['raw_response_preview'] ?? '' ) ) {
+			$likely_truncated = true;
+		}
+		$provider_debug['likely_truncated'] = $likely_truncated;
 
 		$job_id = $this->create_job(
 			array(
@@ -123,22 +135,34 @@ class AI_SEO_GEO_Optimizer {
 				'context_json' => array(
 					'provider_key' => $provider['provider_key'],
 					'model'        => $provider_result['model'] ?? $provider['default_model'],
+					'selected_fields' => $fields,
+					'max_tokens'   => $max_tokens,
+					'estimated_input_length' => $estimated_input_length,
+					'likely_truncated' => $likely_truncated,
 					'error'        => sanitize_text_field( (string) ( $provider_result['error'] ?? '' ) ),
-					'http_status'  => isset( $provider_result['debug']['http_status'] ) ? absint( $provider_result['debug']['http_status'] ) : 0,
-					'json_error'   => sanitize_text_field( (string) ( $provider_result['debug']['json_error'] ?? '' ) ),
-					'raw_response_preview' => sanitize_textarea_field( mb_substr( (string) ( $provider_result['debug']['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ), 0, 1000 ) ),
+					'http_status'  => isset( $provider_debug['http_status'] ) ? absint( $provider_debug['http_status'] ) : 0,
+					'json_error'   => sanitize_text_field( (string) ( $provider_debug['json_error'] ?? '' ) ),
+					'raw_response_preview' => sanitize_textarea_field( mb_substr( (string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ), 0, 1000 ) ),
 				),
 			)
 		);
 
 		if ( empty( $provider_result['success'] ) ) {
-			$debug = isset( $provider_result['debug'] ) && is_array( $provider_result['debug'] ) ? $provider_result['debug'] : array();
+			$debug = $provider_debug;
 			$debug['provider_key'] = $provider_result['provider_key'] ?? $provider['provider_key'];
 			$debug['model']        = $provider_result['model'] ?? $provider['default_model'];
+			$debug['selected_fields']        = $fields;
+			$debug['max_tokens']             = $max_tokens;
+			$debug['estimated_input_length'] = $estimated_input_length;
+			$debug['likely_truncated']       = $likely_truncated;
+			$error_message = ! empty( $provider_result['error'] ) ? $provider_result['error'] : __( 'AI generation failed.', 'ai-seo-geo-optimizer' );
+			if ( $is_json_parse_failed && $likely_truncated ) {
+				$error_message .= ' ' . __( 'AI response may be truncated. Please reduce selected fields or increase max_tokens.', 'ai-seo-geo-optimizer' );
+			}
 
 			return array(
 				'success' => false,
-				'message' => ! empty( $provider_result['error'] ) ? $provider_result['error'] : __( 'AI generation failed.', 'ai-seo-geo-optimizer' ),
+				'message' => $error_message,
 				'job_id'  => $job_id,
 				'debug'   => $debug,
 			);
@@ -149,7 +173,64 @@ class AI_SEO_GEO_Optimizer {
 			'message' => __( 'AI suggestions generated successfully.', 'ai-seo-geo-optimizer' ),
 			'job_id'  => $job_id,
 			'result'  => is_array( $provider_result['data'] ) ? $provider_result['data'] : array(),
+			'debug'   => array(
+				'selected_fields'        => $fields,
+				'max_tokens'             => $max_tokens,
+				'estimated_input_length' => $estimated_input_length,
+				'likely_truncated'       => $likely_truncated,
+			),
 		);
+	}
+
+	/**
+	 * Resolves request max_tokens with long-content safety defaults.
+	 *
+	 * @param array $fields               Selected fields.
+	 * @param int   $requested_max_tokens User requested max_tokens.
+	 *
+	 * @return int
+	 */
+	private function resolve_max_tokens( $fields, $requested_max_tokens ) {
+		$base_min_tokens = 3000;
+		$high_detail_min = 6000;
+		$heavy_fields    = array( 'optimized_content', 'content', 'faq', 'schema', 'internal_links', 'image_alt' );
+		$has_heavy_field = count( array_intersect( $fields, $heavy_fields ) ) > 0;
+		$minimum_tokens  = $has_heavy_field ? $high_detail_min : $base_min_tokens;
+
+		return max( $minimum_tokens, $requested_max_tokens );
+	}
+
+	/**
+	 * Estimates input length sent to provider.
+	 *
+	 * @param array $messages Prompt messages.
+	 *
+	 * @return int
+	 */
+	private function estimate_messages_length( $messages ) {
+		$total = 0;
+		foreach ( $messages as $message ) {
+			$total += mb_strlen( (string) ( $message['content'] ?? '' ) );
+		}
+
+		return $total;
+	}
+
+	/**
+	 * Detects incomplete JSON tail by raw response preview.
+	 *
+	 * @param string $raw_response_preview Raw response preview.
+	 *
+	 * @return bool
+	 */
+	private function is_raw_response_tail_incomplete( $raw_response_preview ) {
+		$tail = trim( (string) $raw_response_preview );
+		if ( '' === $tail ) {
+			return false;
+		}
+
+		$last_char = mb_substr( $tail, -1 );
+		return '}' !== $last_char;
 	}
 
 	/**

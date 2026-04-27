@@ -41,6 +41,8 @@ if ( ! $original_data ) {
 	return;
 }
 
+$content_length = mb_strlen( wp_strip_all_tags( (string) $original_data['content'] ) );
+
 if ( isset( $_POST['ai_seo_geo_generate_action'] ) ) {
 	AI_SEO_GEO_Security::verify_nonce_or_die( 'ai_seo_geo_generate_suggestions', 'ai_seo_geo_nonce' );
 	$result = $optimizer->generate_suggestions(
@@ -51,6 +53,7 @@ if ( isset( $_POST['ai_seo_geo_generate_action'] ) ) {
 			'target_keyword' => sanitize_text_field( wp_unslash( $_POST['target_keyword'] ?? '' ) ),
 			'language'       => sanitize_text_field( wp_unslash( $_POST['language'] ?? 'en' ) ),
 			'brand_tone'     => sanitize_text_field( wp_unslash( $_POST['brand_tone'] ?? 'professional' ) ),
+			'max_tokens'     => absint( $_POST['max_tokens'] ?? 0 ),
 			'fields'         => isset( $_POST['fields'] ) ? array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['fields'] ) ) : array(),
 		)
 	);
@@ -108,6 +111,18 @@ $snapshots = $revision_manager->get_snapshots_by_post( $post_id );
 			</ul>
 			<p><strong><?php esc_html_e( 'Raw Response Preview (max 500 chars):', 'ai-seo-geo-optimizer' ); ?></strong></p>
 			<pre style="white-space:pre-wrap;max-height:260px;overflow:auto;"><?php echo esc_html( (string) mb_substr( (string) ( $json_debug_info['raw_response_preview'] ?? '' ), 0, 500 ) ); ?></pre>
+			<?php
+			$raw_preview_tail = trim( (string) ( $json_debug_info['raw_response_preview'] ?? '' ) );
+			$last_char        = '' === $raw_preview_tail ? '' : (string) mb_substr( $raw_preview_tail, -1 );
+			?>
+			<?php if ( ! empty( $json_debug_info['likely_truncated'] ) || '}' !== $last_char ) : ?>
+				<p><strong><?php esc_html_e( 'AI response may be truncated. Please reduce selected fields or increase max_tokens.', 'ai-seo-geo-optimizer' ); ?></strong></p>
+			<?php endif; ?>
+		</div>
+	<?php endif; ?>
+	<?php if ( $content_length > 8000 ) : ?>
+		<div class="notice notice-warning">
+			<p><strong><?php esc_html_e( '内容较长，建议先只优化标题、Meta Description、标签，或分段优化正文。', 'ai-seo-geo-optimizer' ); ?></strong></p>
 		</div>
 	<?php endif; ?>
 
@@ -137,6 +152,7 @@ $snapshots = $revision_manager->get_snapshots_by_post( $post_id );
 			<tr><th><?php esc_html_e( 'Target Keyword', 'ai-seo-geo-optimizer' ); ?></th><td><input class="regular-text" type="text" name="target_keyword" value="" /></td></tr>
 			<tr><th><?php esc_html_e( 'Language', 'ai-seo-geo-optimizer' ); ?></th><td><input class="regular-text" type="text" name="language" value="en" /></td></tr>
 			<tr><th><?php esc_html_e( 'Brand Tone', 'ai-seo-geo-optimizer' ); ?></th><td><input class="regular-text" type="text" name="brand_tone" value="professional" /></td></tr>
+			<tr><th><?php esc_html_e( 'max_tokens', 'ai-seo-geo-optimizer' ); ?></th><td><input class="small-text" type="number" min="3000" step="100" name="max_tokens" value="<?php echo esc_attr( (string) max( 3000, absint( $_POST['max_tokens'] ?? 3000 ) ) ); ?>" /><p class="description"><?php esc_html_e( 'Default minimum is 3000. If content/FAQ/schema/internal links/image alt is selected, system uses at least 6000 unless you set a higher value.', 'ai-seo-geo-optimizer' ); ?></p></td></tr>
 			<tr><th><?php esc_html_e( 'Fields to Optimize', 'ai-seo-geo-optimizer' ); ?></th><td><?php foreach ( $fields_options as $field_name ) : ?><label style="display:inline-block;min-width:180px;"><input type="checkbox" name="fields[]" value="<?php echo esc_attr( $field_name ); ?>" checked /><?php echo esc_html( $field_name ); ?></label><?php endforeach; ?></td></tr>
 		</table>
 		<?php submit_button( __( 'Generate Suggestions', 'ai-seo-geo-optimizer' ) ); ?>
