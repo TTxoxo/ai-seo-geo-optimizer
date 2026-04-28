@@ -65,6 +65,7 @@ class AI_SEO_GEO_Revision_Manager {
 
 		$post_data_update = array( 'ID' => $post_id );
 		$post_type        = get_post_type( $post_id );
+		$selected_fields  = is_array( $selected_fields ) ? array_map( 'sanitize_text_field', $selected_fields ) : array();
 
 		if ( in_array( 'title', $selected_fields, true ) && ! empty( $result_json['h1'] ) ) {
 			$post_data_update['post_title'] = sanitize_text_field( $result_json['h1'] );
@@ -74,8 +75,25 @@ class AI_SEO_GEO_Revision_Manager {
 			$post_data_update['post_excerpt'] = sanitize_textarea_field( $result_json['excerpt'] );
 		}
 
-		if ( in_array( 'content', $selected_fields, true ) && ! empty( $result_json['optimized_content'] ) ) {
-			$post_data_update['post_content'] = wp_kses_post( $result_json['optimized_content'] );
+		if ( in_array( 'content', $selected_fields, true ) ) {
+			$optimized_content = isset( $result_json['optimized_content'] ) ? trim( (string) $result_json['optimized_content'] ) : '';
+			if ( '' === $optimized_content ) {
+				$this->log_manager->add_log(
+					array(
+						'job_id'       => $job_id,
+						'post_id'      => $post_id,
+						'action'       => 'apply_selected_changes_blocked',
+						'message'      => __( 'Cannot apply empty optimized content.', 'ai-seo-geo-optimizer' ),
+						'context_json' => array(
+							'fields' => $selected_fields,
+						),
+					)
+				);
+
+				return array( 'success' => false, 'message' => __( 'Cannot apply empty optimized content.', 'ai-seo-geo-optimizer' ) );
+			}
+
+			$post_data_update['post_content'] = wp_kses_post( $optimized_content );
 		}
 
 		if ( in_array( 'faq', $selected_fields, true ) && ! empty( $result_json['faq'] ) && is_array( $result_json['faq'] ) ) {

@@ -35,6 +35,7 @@ $notice_type       = 'success';
 $ai_result         = null;
 $current_job_id    = 0;
 $json_debug_info   = array();
+$requested_job_id  = absint( $_GET['job_id'] ?? 0 );
 
 if ( ! $original_data ) {
 	echo '<div class="notice notice-error"><p>' . esc_html__( 'Unable to load original content.', 'ai-seo-geo-optimizer' ) . '</p></div>';
@@ -58,7 +59,7 @@ if ( isset( $_POST['ai_seo_geo_generate_action'] ) ) {
 		)
 	);
 	$notice         = $result['message'];
-	$notice_type    = ! empty( $result['success'] ) ? 'success' : 'error';
+	$notice_type    = ! empty( $result['notice_type'] ) ? sanitize_text_field( $result['notice_type'] ) : ( ! empty( $result['success'] ) ? 'success' : 'error' );
 	$current_job_id = absint( $result['job_id'] ?? 0 );
 	$json_debug_info = isset( $result['debug'] ) && is_array( $result['debug'] ) ? $result['debug'] : array();
 	if ( ! empty( $result['success'] ) ) {
@@ -84,14 +85,29 @@ if ( isset( $_POST['ai_seo_geo_rollback_action'] ) ) {
 }
 
 if ( null === $ai_result ) {
-	$latest = $review_manager->get_latest_job_result( $post_id );
-	if ( ! empty( $latest['result'] ) ) {
-		$ai_result      = $latest['result'];
-		$current_job_id = absint( $latest['job']['id'] ?? 0 );
+	$job_payload = null;
+	if ( $requested_job_id > 0 ) {
+		$job_payload = $review_manager->get_job_result_by_id( $post_id, $requested_job_id );
+	}
+	if ( ! $job_payload ) {
+		$job_payload = $review_manager->get_latest_successful_job_result( $post_id );
+	}
+	if ( ! empty( $job_payload['job'] ) ) {
+		$ai_result       = is_array( $job_payload['result'] ) ? $job_payload['result'] : array();
+		$current_job_id  = absint( $job_payload['job']['id'] ?? 0 );
+		$json_debug_info = isset( $job_payload['debug'] ) && is_array( $job_payload['debug'] ) ? $job_payload['debug'] : array();
+		if ( ! empty( $job_payload['result_empty'] ) ) {
+			$notice      = __( 'AI returned successfully, but result_json is empty.', 'ai-seo-geo-optimizer' );
+			$notice_type = 'warning';
+		}
 	}
 }
 
 $snapshots = $revision_manager->get_snapshots_by_post( $post_id );
+$optimized_content_value = isset( $ai_result['optimized_content'] ) && is_scalar( $ai_result['optimized_content'] ) ? (string) $ai_result['optimized_content'] : '';
+$raw_response_preview = isset( $json_debug_info['raw_response_preview'] ) ? (string) $json_debug_info['raw_response_preview'] : '';
+$faq_count = isset( $ai_result['faq'] ) && is_array( $ai_result['faq'] ) ? count( $ai_result['faq'] ) : 0;
+$tags_count = isset( $ai_result['suggested_tags'] ) && is_array( $ai_result['suggested_tags'] ) ? count( $ai_result['suggested_tags'] ) : 0;
 ?>
 <div class="wrap ai-seo-geo-wrap">
 	<h1><?php esc_html_e( 'Review & Apply (Single Content)', 'ai-seo-geo-optimizer' ); ?></h1>
@@ -119,6 +135,13 @@ $snapshots = $revision_manager->get_snapshots_by_post( $post_id );
 				<p><strong><?php esc_html_e( 'AI response may be truncated. Please reduce selected fields or increase max_tokens.', 'ai-seo-geo-optimizer' ); ?></strong></p>
 			<?php endif; ?>
 		</div>
+	<?php endif; ?>
+	<?php if ( '' !== $raw_response_preview ) : ?>
+		<details class="postbox" style="padding:12px;margin-top:12px;">
+			<summary><strong><?php esc_html_e( 'Raw AI Response Preview', 'ai-seo-geo-optimizer' ); ?></strong></summary>
+			<p class="description"><?php esc_html_e( 'For administrator debugging only. API keys and headers are never displayed here.', 'ai-seo-geo-optimizer' ); ?></p>
+			<pre style="white-space:pre-wrap;max-height:320px;overflow:auto;"><?php echo esc_html( mb_substr( $raw_response_preview, 0, 1000 ) ); ?></pre>
+		</details>
 	<?php endif; ?>
 	<?php if ( $content_length > 8000 ) : ?>
 		<div class="notice notice-warning">
@@ -162,7 +185,40 @@ $snapshots = $revision_manager->get_snapshots_by_post( $post_id );
 	<?php if ( ! empty( $ai_result ) && is_array( $ai_result ) ) : ?>
 		<h2><?php esc_html_e( 'AI Suggestions', 'ai-seo-geo-optimizer' ); ?></h2>
 		<?php if ( isset( $ai_result['risk_level'] ) && 'high' === strtolower( (string) $ai_result['risk_level'] ) ) : ?><div class="notice notice-warning"><p><strong><?php esc_html_e( 'Risk level is HIGH. Please review carefully before applying any changes.', 'ai-seo-geo-optimizer' ); ?></strong></p></div><?php endif; ?>
-		<div style="display:flex;gap:16px;"><div style="flex:1;"><h3><?php esc_html_e( 'Original', 'ai-seo-geo-optimizer' ); ?></h3><div class="postbox" style="padding:12px;"><?php echo wp_kses_post( wpautop( $original_data['content'] ) ); ?></div></div><div style="flex:1;"><h3><?php esc_html_e( 'Optimized Content', 'ai-seo-geo-optimizer' ); ?></h3><div class="postbox" style="padding:12px;"><?php echo wp_kses_post( wpautop( (string) ( $ai_result['optimized_content'] ?? '' ) ) ); ?></div></div></div>
+		<div style="display:flex;gap:16px;">
+			<div style="flex:1;"><h3><?php esc_html_e( 'Original', 'ai-seo-geo-optimizer' ); ?></h3><div class="postbox" style="padding:12px;"><?php echo wp_kses_post( wpautop( $original_data['content'] ) ); ?></div></div>
+			<div style="flex:1;">
+				<h3><?php esc_html_e( 'Optimized Content', 'ai-seo-geo-optimizer' ); ?></h3>
+				<div class="postbox" style="padding:12px;">
+					<?php if ( '' !== trim( $optimized_content_value ) ) : ?>
+						<?php echo wp_kses_post( wpautop( $optimized_content_value ) ); ?>
+					<?php else : ?>
+						<p><strong><?php esc_html_e( 'No optimized content was returned.', 'ai-seo-geo-optimizer' ); ?></strong></p>
+						<ul style="margin-left:18px;list-style:disc;">
+							<li><?php esc_html_e( 'Content field was not selected', 'ai-seo-geo-optimizer' ); ?></li>
+							<li><?php esc_html_e( 'AI returned a different field name', 'ai-seo-geo-optimizer' ); ?></li>
+							<li><?php esc_html_e( 'AI response was truncated', 'ai-seo-geo-optimizer' ); ?></li>
+							<li><?php esc_html_e( 'Prompt did not require optimized_content', 'ai-seo-geo-optimizer' ); ?></li>
+							<li><?php esc_html_e( 'Model returned only meta fields', 'ai-seo-geo-optimizer' ); ?></li>
+						</ul>
+					<?php endif; ?>
+				</div>
+				<h4><?php esc_html_e( 'Optimized Content (Raw HTML)', 'ai-seo-geo-optimizer' ); ?></h4>
+				<textarea readonly rows="10" style="width:100%;"><?php echo esc_textarea( $optimized_content_value ); ?></textarea>
+			</div>
+		</div>
+		<details class="postbox" style="padding:12px;margin-top:16px;">
+			<summary><strong><?php esc_html_e( 'Parsed AI Result Debug', 'ai-seo-geo-optimizer' ); ?></strong></summary>
+			<ul style="margin-left:18px;">
+				<li><strong><?php esc_html_e( 'search_intent exists:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( isset( $ai_result['search_intent'] ) ? __( 'Yes', 'ai-seo-geo-optimizer' ) : __( 'No', 'ai-seo-geo-optimizer' ) ); ?></li>
+				<li><strong><?php esc_html_e( 'seo_title length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( (string) ( $ai_result['seo_title'] ?? '' ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'meta_description length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( (string) ( $ai_result['meta_description'] ?? '' ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'optimized_content length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( $optimized_content_value ) ); ?></li>
+				<li><strong><?php esc_html_e( 'faq count:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) $faq_count ); ?></li>
+				<li><strong><?php esc_html_e( 'suggested_tags count:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) $tags_count ); ?></li>
+				<li><strong><?php esc_html_e( 'risk_level:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $ai_result['risk_level'] ?? '' ) ); ?></li>
+			</ul>
+		</details>
 		<table class="widefat striped" style="margin-top:16px;"><tbody>
 		<?php foreach ( array( 'search_intent', 'primary_keyword', 'secondary_keywords', 'seo_title', 'meta_description', 'suggested_tags', 'excerpt', 'faq', 'internal_link_suggestions', 'image_alt_suggestions', 'schema_suggestion', 'geo_summary', 'fact_check_notes', 'needs_human_review', 'unsupported_claims_removed', 'content_score', 'risk_level' ) as $display_key ) : $value = $ai_result[ $display_key ] ?? ''; $is_highlight = in_array( $display_key, array( 'fact_check_notes', 'needs_human_review' ), true ); ?>
 			<tr <?php echo $is_highlight ? 'style="background:#fff7e6;"' : ''; ?>><th style="width:240px;"><?php echo esc_html( $display_key ); ?></th><td><pre style="white-space:pre-wrap;"><?php echo esc_html( is_array( $value ) ? wp_json_encode( $value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) : (string) $value ); ?></pre></td></tr>

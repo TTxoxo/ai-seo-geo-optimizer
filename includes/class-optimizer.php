@@ -85,6 +85,7 @@ class AI_SEO_GEO_Optimizer {
 				'target_keyword' => $target_keyword,
 				'language'       => $language,
 				'brand_tone'     => $brand_tone,
+				'fields'         => $fields,
 			)
 		);
 
@@ -110,6 +111,16 @@ class AI_SEO_GEO_Optimizer {
 			$likely_truncated = true;
 		}
 		$provider_debug['likely_truncated'] = $likely_truncated;
+		$raw_response_preview = mb_substr(
+			(string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ),
+			0,
+			1000
+		);
+		$content_selected = in_array( 'content', $fields, true ) || in_array( 'optimized_content', $fields, true );
+		$optimized_content = isset( $provider_result['data']['optimized_content'] ) && is_scalar( $provider_result['data']['optimized_content'] )
+			? trim( (string) $provider_result['data']['optimized_content'] )
+			: '';
+		$has_empty_optimized_content = $content_selected && '' === $optimized_content;
 
 		$job_id = $this->create_job(
 			array(
@@ -142,7 +153,7 @@ class AI_SEO_GEO_Optimizer {
 					'error'        => sanitize_text_field( (string) ( $provider_result['error'] ?? '' ) ),
 					'http_status'  => isset( $provider_debug['http_status'] ) ? absint( $provider_debug['http_status'] ) : 0,
 					'json_error'   => sanitize_text_field( (string) ( $provider_debug['json_error'] ?? '' ) ),
-					'raw_response_preview' => sanitize_textarea_field( mb_substr( (string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ), 0, 1000 ) ),
+					'raw_response_preview' => sanitize_textarea_field( $raw_response_preview ),
 				),
 			)
 		);
@@ -155,6 +166,7 @@ class AI_SEO_GEO_Optimizer {
 			$debug['max_tokens']             = $max_tokens;
 			$debug['estimated_input_length'] = $estimated_input_length;
 			$debug['likely_truncated']       = $likely_truncated;
+			$debug['raw_response_preview']   = $raw_response_preview;
 			$error_message = ! empty( $provider_result['error'] ) ? $provider_result['error'] : __( 'AI generation failed.', 'ai-seo-geo-optimizer' );
 			if ( $is_json_parse_failed && $likely_truncated ) {
 				$error_message .= ' ' . __( 'AI response may be truncated. Please reduce selected fields or increase max_tokens.', 'ai-seo-geo-optimizer' );
@@ -170,7 +182,10 @@ class AI_SEO_GEO_Optimizer {
 
 		return array(
 			'success' => true,
-			'message' => __( 'AI suggestions generated successfully.', 'ai-seo-geo-optimizer' ),
+			'message' => $has_empty_optimized_content
+				? __( 'AI returned valid JSON, but optimized_content is empty. Please check the prompt, selected fields, or raw AI response.', 'ai-seo-geo-optimizer' )
+				: __( 'AI suggestions generated. Please review each field before applying.', 'ai-seo-geo-optimizer' ),
+			'notice_type' => $has_empty_optimized_content ? 'warning' : 'success',
 			'job_id'  => $job_id,
 			'result'  => is_array( $provider_result['data'] ) ? $provider_result['data'] : array(),
 			'debug'   => array(
@@ -178,6 +193,9 @@ class AI_SEO_GEO_Optimizer {
 				'max_tokens'             => $max_tokens,
 				'estimated_input_length' => $estimated_input_length,
 				'likely_truncated'       => $likely_truncated,
+				'raw_response_preview'   => $raw_response_preview,
+				'is_json_parse_failed'   => $is_json_parse_failed,
+				'has_empty_optimized_content' => $has_empty_optimized_content,
 			),
 		);
 	}

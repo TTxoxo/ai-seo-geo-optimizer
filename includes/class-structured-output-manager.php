@@ -140,6 +140,31 @@ class AI_SEO_GEO_Structured_Output_Manager {
 			$result[ $field ] = is_scalar( $result[ $field ] ) ? (string) $result[ $field ] : '';
 		}
 
+		if ( '' === trim( $result['optimized_content'] ) ) {
+			$content_aliases = array(
+				'content',
+				'body',
+				'article',
+				'article_content',
+				'html_content',
+				'final_content',
+				'revised_content',
+				'improved_content',
+				'rewritten_content',
+				'post_content',
+			);
+
+			foreach ( $content_aliases as $alias ) {
+				if ( isset( $decoded[ $alias ] ) && is_scalar( $decoded[ $alias ] ) ) {
+					$alias_value = trim( (string) $decoded[ $alias ] );
+					if ( '' !== $alias_value ) {
+						$result['optimized_content'] = $alias_value;
+						break;
+					}
+				}
+			}
+		}
+
 		$array_fields = array(
 			'secondary_keywords',
 			'suggested_tags',

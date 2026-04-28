@@ -170,6 +170,13 @@ class AI_SEO_GEO_Prompt_Builder {
 		$vars     = $this->build_template_variables( $post, $args );
 		$user     = strtr( $template, $vars );
 		$user     = rtrim( $user ) . "\n\nReturn JSON only. No Markdown. No explanation.";
+		if ( $this->should_require_optimized_content( $args ) ) {
+			$user .= "\n\nYou must return a non-empty optimized_content field.\n";
+			$user .= "The optimized_content field must contain the improved WordPress post body in valid HTML.\n";
+			$user .= "Use only safe HTML tags such as h2, h3, p, ul, ol, li, strong, table, thead, tbody, tr, th, td.\n";
+			$user .= "Do not leave optimized_content empty if content optimization is selected.\n";
+			$user .= "If you cannot rewrite the full content, return an improved outline and rewritten first section in optimized_content, and add the limitation to needs_human_review.\n";
+		}
 
 		$messages = array(
 			array(
@@ -188,6 +195,18 @@ class AI_SEO_GEO_Prompt_Builder {
 			'template_key' => $template_key,
 			'messages'     => $messages,
 		);
+	}
+
+	/**
+	 * Whether current generation requires non-empty optimized_content.
+	 *
+	 * @param array $args Build arguments.
+	 *
+	 * @return bool
+	 */
+	private function should_require_optimized_content( $args ) {
+		$fields = isset( $args['fields'] ) && is_array( $args['fields'] ) ? array_map( 'sanitize_text_field', $args['fields'] ) : array();
+		return in_array( 'content', $fields, true ) || in_array( 'optimized_content', $fields, true );
 	}
 
 	/**
