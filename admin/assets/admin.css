@@ -1,0 +1,27 @@
+.ai-seo-geo-wrap {
+	max-width: 1200px;
+}
+
+.ai-seo-geo-wrap p {
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.ai-seo-geo-filters {
+	margin: 12px 0;
+	border-collapse: separate;
+	border-spacing: 12px 8px;
+}
+
+.ai-seo-geo-filters label {
+	font-weight: 600;
+}
+
+.ai-seo-geo-bulk-confirm {
+	margin-top: 16px;
+	padding: 16px 20px;
+}
+
+.ai-seo-geo-bulk-confirm ul {
+	margin-left: 18px;
+}
