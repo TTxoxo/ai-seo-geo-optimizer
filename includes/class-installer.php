@@ -100,6 +100,8 @@ class AI_SEO_GEO_Installer {
 			link_type VARCHAR(100) NOT NULL,
 			priority INT NOT NULL DEFAULT 0,
 			status VARCHAR(50) NOT NULL DEFAULT 'active',
+			related_keywords TEXT NULL,
+			recommended_context TEXT NULL,
 			notes TEXT NULL,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
