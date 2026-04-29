@@ -7,7 +7,7 @@ $manager->ensure_table_columns();
 $notice = '';
 $action = isset($_GET['action']) ? sanitize_text_field(wp_unslash($_GET['action'])) : '';
 $link_id = absint($_GET['link_id'] ?? 0);
-$edit_row = $link_id ? $manager->get_link_by_id($link_id) : array();
+$edit_row = ( 'edit' === $action && $link_id ) ? $manager->get_link_by_id($link_id) : array();
 
 if ( isset( $_POST['ai_seo_geo_save_internal_link'] ) ) {
 	AI_SEO_GEO_Security::verify_nonce_or_die( 'ai_seo_geo_save_internal_link', 'ai_seo_geo_internal_link_nonce' );
@@ -18,6 +18,9 @@ if ( isset( $_POST['ai_seo_geo_save_internal_link'] ) ) {
 		wp_safe_redirect( admin_url( 'admin.php?page=ai-seo-geo-internal-links&updated=1' ) ); exit;
 	}
 	$notice = __( 'Save failed. Please check fields.', 'ai-seo-geo-optimizer' );
+	if ( ! empty( $result['message'] ) && 'link_not_found' === $result['message'] ) {
+		$notice = __( 'Link record not found.', 'ai-seo-geo-optimizer' );
+	}
 }
 if ( isset($_GET['updated']) ) { $notice = __( 'Internal link updated successfully.', 'ai-seo-geo-optimizer' ); }
 $rows = $manager->get_all_links();

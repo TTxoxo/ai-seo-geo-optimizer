@@ -30,7 +30,11 @@ class AI_SEO_GEO_Internal_Link_Manager {
 		$row=array('anchor_text'=>sanitize_text_field($data['anchor_text']??''),'target_url'=>esc_url_raw($url),'target_post_id'=>absint(url_to_postid($full)),'link_type'=>$link_type,'priority'=>$priority,'status'=>$status,'related_keywords'=>sanitize_textarea_field($data['related_keywords']??''),'recommended_context'=>sanitize_textarea_field($data['recommended_context']??''),'notes'=>sanitize_textarea_field($data['notes']??''),'updated_at'=>current_time('mysql'));
 		if(''===trim($row['anchor_text'])||''===trim($row['target_url'])) return array('success'=>false,'message'=>'required_fields_missing');
 		$id=absint($data['id']??0);
-		if($id>0){ $ok=false!==$wpdb->update($t,$row,array('id'=>$id)); return array('success'=>$ok,'id'=>$id); }
+		if($id>0){
+			$exists = $this->get_link_by_id( $id );
+			if ( empty( $exists ) ) { return array( 'success' => false, 'message' => 'link_not_found' ); }
+			$ok=false!==$wpdb->update($t,$row,array('id'=>$id)); return array('success'=>$ok,'id'=>$id);
+		}
 		$row['created_at']=current_time('mysql'); $ok=false!==$wpdb->insert($t,$row); return array('success'=>$ok,'id'=>(int)$wpdb->insert_id);
 	}
 
