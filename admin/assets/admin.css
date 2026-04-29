@@ -1,0 +1,39 @@
+.ai-seo-geo-wrap {
+	max-width: 1200px;
+}
+
+.ai-seo-geo-wrap p {
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.ai-seo-geo-filters {
+	margin: 12px 0;
+	border-collapse: separate;
+	border-spacing: 12px 8px;
+}
+
+.ai-seo-geo-filters label {
+	font-weight: 600;
+}
+
+.ai-seo-geo-bulk-confirm {
+	margin-top: 16px;
+	padding: 16px 20px;
+}
+
+.ai-seo-geo-bulk-confirm ul {
+	margin-left: 18px;
+}
+
+.ai-seo-geo-wrap details.postbox summary {
+	cursor: pointer;
+	padding: 4px 0;
+}
+
+.ai-seo-geo-wrap textarea[readonly] {
+	background: #f8f9fa;
+}
+
+.ai-seo-geo-readability-risk-high{background:#fff1f0;border-left:4px solid #d63638;padding:8px 12px;margin:8px 0;}
+.ai-seo-geo-readability-risk-medium{background:#fff8e5;border-left:4px solid #dba617;padding:8px 12px;margin:8px 0;}
