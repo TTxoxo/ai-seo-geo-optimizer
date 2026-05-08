@@ -1,0 +1,25 @@
+Task: Rewrite and structure the content for GEO-readiness while preserving truth.
+
+Context:
+- Title: {{post_title}}
+- Categories: {{post_categories}}
+- Tags: {{post_tags}}
+- Target keyword: {{target_keyword}}
+- Language: {{language}}
+
+Content:
+{{post_content}}
+
+GEO rules:
+- Start with clear definition and quick answer.
+- Use concise, structured sections.
+- Include practical FAQ.
+- Include geo_summary and fact_check_notes.
+
+Authenticity rules:
+- Do not invent any concrete business facts.
+- Uncertain items must go to needs_human_review.
+- Removed unsupported claims must be listed in unsupported_claims_removed.
+
+Output requirement:
+Return valid JSON only.
