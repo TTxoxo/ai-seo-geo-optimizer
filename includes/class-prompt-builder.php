@@ -204,11 +204,7 @@ class AI_SEO_GEO_Prompt_Builder {
 		$user .= "\nYou may only suggest internal links from the provided Internal Link Library.\nDo not invent URLs.\nDo not create new target URLs.\nIf no suitable internal link exists, return an empty internal_link_suggestions array.\nUse natural anchor text.\nDo not force links into irrelevant sections.\nSuggest 2-5 internal links only when relevant.";
 
 		if ( $this->should_require_optimized_content( $args ) ) {
-			$user .= "\n\nYou must return a non-empty optimized_content field.\n";
-			$user .= "The optimized_content field must contain the improved WordPress post body in valid HTML.\n";
-			$user .= "Use only safe HTML tags such as h2, h3, p, ul, ol, li, strong, table, thead, tbody, tr, th, td.\n";
-			$user .= "Do not leave optimized_content empty if content optimization is selected.\n";
-			$user .= "If you cannot rewrite the full content, return an improved outline and rewritten first section in optimized_content, and add the limitation to needs_human_review.\n";
+			$user .= $this->get_content_only_prompt_rules();
 		}
 
 		$style_rules_manager = new AI_SEO_GEO_Style_Rules_Manager();
@@ -230,6 +226,16 @@ class AI_SEO_GEO_Prompt_Builder {
 			'error'        => '',
 			'template_key' => $template_key,
 			'messages'     => $messages,
+			'debug'        => array(
+				'post_id'                 => (int) $post->ID,
+				'post_type'               => (string) $post->post_type,
+				'original_title_length'    => mb_strlen( (string) get_the_title( $post->ID ) ),
+				'original_excerpt_length'  => mb_strlen( (string) $post->post_excerpt ),
+				'original_content_length'  => mb_strlen( wp_strip_all_tags( (string) $post->post_content ) ),
+				'selected_fields'          => isset( $args['fields'] ) && is_array( $args['fields'] ) ? array_values( array_map( 'sanitize_text_field', $args['fields'] ) ) : array(),
+				'target_keyword'           => isset( $args['target_keyword'] ) ? sanitize_text_field( $args['target_keyword'] ) : '',
+				'output_format'            => $final_format,
+			),
 		);
 	}
 
@@ -242,7 +248,76 @@ class AI_SEO_GEO_Prompt_Builder {
 	 */
 	private function should_require_optimized_content( $args ) {
 		$fields = isset( $args['fields'] ) && is_array( $args['fields'] ) ? array_map( 'sanitize_text_field', $args['fields'] ) : array();
-		return in_array( 'content', $fields, true ) || in_array( 'optimized_content', $fields, true );
+		$content_fields = array( 'content', 'optimized_content', 'post_content', 'body', 'article_content', 'long_description', 'product_long_description' );
+		return count( array_intersect( $content_fields, $fields ) ) > 0;
+	}
+
+	/**
+	 * Gets strict content-only prompt rules.
+	 *
+	 * @return string
+	 */
+	private function get_content_only_prompt_rules() {
+		return "
+
+You are rewriting the WordPress body content only.
+"
+			. "The user selected content optimization.
+"
+			. "You must return a non-empty \"optimized_content\" field.
+"
+			. "Do not leave optimized_content empty.
+"
+			. "Do not return only SEO title, meta description, tags, FAQ, internal links, image alt, or schema.
+"
+			. "The optimized_content field must contain the improved WordPress body content.
+"
+			. "Do not generate H1.
+"
+			. "The theme template already outputs the page H1.
+"
+			. "Start headings from H2.
+"
+			. "Use H3 only under H2.
+"
+			. "Use clean WordPress-safe HTML.
+"
+			. "Allowed tags: h2, h3, p, ul, ol, li, strong, em, table, thead, tbody, tr, th, td, a.
+"
+			. "Do not use markdown.
+"
+			. "Do not wrap the content in code fences.
+"
+			. "Do not invent unsupported product specifications, certifications, case studies, countries, prices, delivery times, factory scale, stock, warranty, or rankings.
+"
+			. "If the original content is short or empty, create a useful body based on the title, excerpt, categories, tags, and target keyword, but mark missing facts in needs_human_review.
+"
+			. "Return valid JSON only.
+"
+			. "Required minimum JSON fields when content is selected: optimized_content, needs_human_review, fact_check_notes, unsupported_claims_removed, risk_level.
+";
+	}
+
+	/**
+	 * Builds retry messages for empty optimized content correction.
+	 *
+	 * @param int   $post_id Post ID.
+	 * @param array $args    Build args.
+	 *
+	 * @return array
+	 */
+	public function build_empty_content_retry_messages( $post_id, $args = array() ) {
+		$base = $this->build_messages( $post_id, $args );
+		if ( empty( $base['success'] ) ) {
+			return $base;
+		}
+
+		$base['messages'][] = array(
+			'role'    => 'user',
+			'content' => 'The previous response returned valid JSON, but "optimized_content" was empty. The user selected content optimization. You must now return a corrected JSON object with a non-empty optimized_content field. Use the original WordPress content, title, excerpt, categories, tags, and target keyword. Return JSON only. Required JSON: {"optimized_content":"","needs_human_review":[],"fact_check_notes":[],"unsupported_claims_removed":[],"risk_level":"medium"}. Rules: optimized_content must not be empty. Do not generate H1. Start headings from H2. Use clean WordPress-safe HTML. Do not invent unsupported facts.',
+		);
+
+		return $base;
 	}
 
 	/**

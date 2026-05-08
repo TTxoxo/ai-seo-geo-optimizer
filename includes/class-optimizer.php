@@ -117,31 +117,66 @@ class AI_SEO_GEO_Optimizer {
 			$likely_truncated = true;
 		}
 		$provider_debug['likely_truncated'] = $likely_truncated;
-		$raw_response_preview = mb_substr(
-			(string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ),
-			0,
-			1000
-		);
-		$content_selected = in_array( 'content', $fields, true ) || in_array( 'optimized_content', $fields, true );
-		$optimized_content = isset( $provider_result['data']['optimized_content'] ) && is_scalar( $provider_result['data']['optimized_content'] )
-			? trim( (string) $provider_result['data']['optimized_content'] )
-			: '';
+		$raw_response_preview = mb_substr( (string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ), 0, 1000 );
+		$prompt_debug         = isset( $prompt_result['debug'] ) && is_array( $prompt_result['debug'] ) ? $prompt_result['debug'] : array();
+		$content_selected     = $this->is_content_field_selected( $fields );
+		$retry_attempted      = false;
+		$retry_success        = false;
+
+		if ( ! isset( $provider_result['data'] ) || ! is_array( $provider_result['data'] ) ) {
+			$provider_result['data'] = array();
+		}
+
+		$optimized_content = $this->get_optimized_content_from_result( $provider_result['data'] );
+		if ( ! empty( $provider_result['success'] ) && $content_selected && '' === $optimized_content ) {
+			$retry_attempted = true;
+			$retry_prompt    = $this->prompt_builder->build_empty_content_retry_messages(
+				$post_id,
+				array(
+					'target_keyword' => $target_keyword,
+					'language'       => $language,
+					'brand_tone'     => $brand_tone,
+					'fields'         => $fields,
+					'output_format'  => $final_format,
+				)
+			);
+
+			if ( ! empty( $retry_prompt['success'] ) ) {
+				$retry_result = $this->provider_manager->call_provider_by_id(
+					$provider_id,
+					$retry_prompt['messages'],
+					array(
+						'model'        => $model,
+						'require_json' => true,
+						'max_tokens'   => $max_tokens,
+					)
+				);
+				$retry_data = isset( $retry_result['data'] ) && is_array( $retry_result['data'] ) ? $retry_result['data'] : array();
+				$retry_content = $this->get_optimized_content_from_result( $retry_data );
+				if ( ! empty( $retry_result['success'] ) && '' !== $retry_content ) {
+					$provider_result = $retry_result;
+					$optimized_content = $retry_content;
+					$provider_debug = isset( $provider_result['debug'] ) && is_array( $provider_result['debug'] ) ? $provider_result['debug'] : array();
+					$raw_response_preview = mb_substr( (string) ( $provider_debug['raw_response_preview'] ?? ( $provider_result['raw_response'] ?? '' ) ), 0, 1000 );
+					$retry_success = true;
+				}
+			}
+		}
+
+		if ( ! isset( $provider_result['data'] ) || ! is_array( $provider_result['data'] ) ) {
+			$provider_result['data'] = array();
+		}
+		$optimized_content = $this->get_optimized_content_from_result( $provider_result['data'] );
 		$has_empty_optimized_content = $content_selected && '' === $optimized_content;
 		$readability_analyzer = new AI_SEO_GEO_Readability_Analyzer();
 		$readability_result   = $readability_analyzer->analyze_content( $optimized_content, $target_keyword );
 		$provider_result['data'] = array_merge( $provider_result['data'], $readability_result );
 		$internal_link_manager = new AI_SEO_GEO_Internal_Link_Manager();
-		$provider_result['data']['internal_link_suggestions'] = $internal_link_manager->validate_suggestions(
-			$provider_result['data']['internal_link_suggestions'] ?? array(),
-			$post_id
-		);
-
-
-		if ( ! isset( $provider_result['data'] ) || ! is_array( $provider_result['data'] ) ) {
-			$provider_result['data'] = array();
-		}
+		$provider_result['data']['internal_link_suggestions'] = $internal_link_manager->validate_suggestions( $provider_result['data']['internal_link_suggestions'] ?? array(), $post_id );
 		$provider_result['data']['detected_editor'] = $detected;
 		$provider_result['data']['output_format'] = $final_format;
+		$provider_result['data']['content_field_selected'] = $content_selected ? 'yes' : 'no';
+		$provider_result['data']['normalized_result_preview'] = mb_substr( (string) wp_json_encode( $provider_result['data'] ), 0, 1000 );
 
 		$job_id = $this->create_job(
 			array(
@@ -168,6 +203,17 @@ class AI_SEO_GEO_Optimizer {
 					'provider_key' => $provider['provider_key'],
 					'model'        => $provider_result['model'] ?? $provider['default_model'],
 					'selected_fields' => $fields,
+					'content_field_selected' => $content_selected ? 'yes' : 'no',
+					'output_format' => $final_format,
+					'original_title_length' => absint( $prompt_debug['original_title_length'] ?? 0 ),
+					'original_excerpt_length' => absint( $prompt_debug['original_excerpt_length'] ?? 0 ),
+					'original_content_length' => absint( $prompt_debug['original_content_length'] ?? 0 ),
+					'optimized_content_length' => mb_strlen( $optimized_content ),
+					'optimized_content_mapped_from' => sanitize_text_field( (string) ( $provider_result['data']['optimized_content_mapped_from'] ?? '' ) ),
+					'retry_attempted' => $retry_attempted ? 'yes' : 'no',
+					'retry_success' => $retry_success ? 'yes' : 'no',
+					'retry_reason' => $retry_attempted ? 'empty_optimized_content' : '',
+					'normalized_result_preview' => sanitize_textarea_field( mb_substr( (string) wp_json_encode( $provider_result['data'] ), 0, 1000 ) ),
 					'max_tokens'   => $max_tokens,
 					'estimated_input_length' => $estimated_input_length,
 					'likely_truncated' => $likely_truncated,
@@ -184,6 +230,8 @@ class AI_SEO_GEO_Optimizer {
 			$debug['provider_key'] = $provider_result['provider_key'] ?? $provider['provider_key'];
 			$debug['model']        = $provider_result['model'] ?? $provider['default_model'];
 			$debug['selected_fields']        = $fields;
+			$debug['content_field_selected'] = $content_selected ? 'yes' : 'no';
+			$debug['output_format'] = $final_format;
 			$debug['max_tokens']             = $max_tokens;
 			$debug['estimated_input_length'] = $estimated_input_length;
 			$debug['likely_truncated']       = $likely_truncated;
@@ -201,16 +249,31 @@ class AI_SEO_GEO_Optimizer {
 			);
 		}
 
+		$success_message = __( 'AI suggestions generated. Please review each field before applying.', 'ai-seo-geo-optimizer' );
+		if ( $has_empty_optimized_content ) {
+			$success_message = 0 === absint( $prompt_debug['original_content_length'] ?? 0 )
+				? __( 'The original post content is empty. AI attempted to generate optimized_content based on title, excerpt, categories, tags, and target keyword, but the result was empty.', 'ai-seo-geo-optimizer' )
+				: __( 'AI returned valid JSON, but optimized_content is still empty after retry. Please check whether the original content was passed to the AI prompt and review the raw AI response preview.', 'ai-seo-geo-optimizer' );
+		}
+
 		return array(
 			'success' => true,
-			'message' => $has_empty_optimized_content
-				? __( 'AI returned valid JSON, but optimized_content is empty. Please check the prompt, selected fields, or raw AI response.', 'ai-seo-geo-optimizer' )
-				: __( 'AI suggestions generated. Please review each field before applying.', 'ai-seo-geo-optimizer' ),
+			'message' => $success_message,
 			'notice_type' => $has_empty_optimized_content ? 'warning' : 'success',
 			'job_id'  => $job_id,
 			'result'  => is_array( $provider_result['data'] ) ? $provider_result['data'] : array(),
 			'debug'   => array(
 				'selected_fields'        => $fields,
+				'content_field_selected' => $content_selected ? 'yes' : 'no',
+				'output_format'          => $final_format,
+				'original_title_length'  => absint( $prompt_debug['original_title_length'] ?? 0 ),
+				'original_excerpt_length'=> absint( $prompt_debug['original_excerpt_length'] ?? 0 ),
+				'original_content_length'=> absint( $prompt_debug['original_content_length'] ?? 0 ),
+				'optimized_content_length' => mb_strlen( $optimized_content ),
+				'optimized_content_mapped_from' => sanitize_text_field( (string) ( $provider_result['data']['optimized_content_mapped_from'] ?? '' ) ),
+				'retry_attempted'        => $retry_attempted ? 'yes' : 'no',
+				'retry_success'          => $retry_success ? 'yes' : 'no',
+				'normalized_result_preview' => mb_substr( (string) wp_json_encode( $provider_result['data'] ), 0, 1000 ),
 				'max_tokens'             => $max_tokens,
 				'estimated_input_length' => $estimated_input_length,
 				'likely_truncated'       => $likely_truncated,
@@ -219,6 +282,31 @@ class AI_SEO_GEO_Optimizer {
 				'has_empty_optimized_content' => $has_empty_optimized_content,
 			),
 		);
+	}
+
+
+	/**
+	 * Checks whether selected fields request body content optimization.
+	 *
+	 * @param array $selected_fields Selected fields.
+	 *
+	 * @return bool
+	 */
+	public function is_content_field_selected( $selected_fields ) {
+		$selected_fields = is_array( $selected_fields ) ? array_map( 'sanitize_text_field', $selected_fields ) : array();
+		$content_fields  = array( 'content', 'optimized_content', 'post_content', 'body', 'article_content', 'long_description', 'product_long_description' );
+		return count( array_intersect( $content_fields, $selected_fields ) ) > 0;
+	}
+
+	/**
+	 * Reads normalized optimized content from provider data.
+	 *
+	 * @param array $data Provider data.
+	 *
+	 * @return string
+	 */
+	private function get_optimized_content_from_result( $data ) {
+		return isset( $data['optimized_content'] ) && is_scalar( $data['optimized_content'] ) ? trim( (string) $data['optimized_content'] ) : '';
 	}
 
 	/**

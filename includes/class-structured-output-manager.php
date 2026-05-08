@@ -135,6 +135,7 @@ class AI_SEO_GEO_Structured_Output_Manager {
 			'detected_editor',
 			'output_format',
 			'optimized_content',
+			'optimized_content_mapped_from',
 			'gutenberg_content',
 			'product_short_description',
 			'product_long_description',
@@ -160,15 +161,29 @@ class AI_SEO_GEO_Structured_Output_Manager {
 				'improved_content',
 				'rewritten_content',
 				'post_content',
+				'body_html',
+				'long_description',
+				'product_description',
+				'product_long_description',
+				'sections',
 			);
 
 			foreach ( $content_aliases as $alias ) {
-				if ( isset( $decoded[ $alias ] ) && is_scalar( $decoded[ $alias ] ) ) {
+				if ( ! isset( $decoded[ $alias ] ) ) {
+					continue;
+				}
+
+				$alias_value = '';
+				if ( is_scalar( $decoded[ $alias ] ) ) {
 					$alias_value = trim( (string) $decoded[ $alias ] );
-					if ( '' !== $alias_value ) {
-						$result['optimized_content'] = $alias_value;
-						break;
-					}
+				} elseif ( is_array( $decoded[ $alias ] ) ) {
+					$alias_value = $this->convert_content_array_to_html( $decoded[ $alias ] );
+				}
+
+				if ( '' !== $alias_value ) {
+					$result['optimized_content']             = $alias_value;
+					$result['optimized_content_mapped_from'] = $alias;
+					break;
 				}
 			}
 		}
@@ -211,6 +226,46 @@ class AI_SEO_GEO_Structured_Output_Manager {
 		return $result;
 	}
 
+
+	/**
+	 * Converts structured content arrays into safe HTML snippets.
+	 *
+	 * @param array $items Content sections.
+	 *
+	 * @return string
+	 */
+	private function convert_content_array_to_html( $items ) {
+		$html = '';
+		foreach ( $items as $item ) {
+			if ( is_scalar( $item ) ) {
+				$text = trim( (string) $item );
+				if ( '' !== $text ) {
+					$html .= '<p>' . esc_html( $text ) . '</p>';
+				}
+				continue;
+			}
+
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$heading = isset( $item['heading'] ) && is_scalar( $item['heading'] ) ? trim( (string) $item['heading'] ) : '';
+			$body    = isset( $item['body'] ) && is_scalar( $item['body'] ) ? trim( (string) $item['body'] ) : '';
+			if ( '' === $body && isset( $item['content'] ) && is_scalar( $item['content'] ) ) {
+				$body = trim( (string) $item['content'] );
+			}
+
+			if ( '' !== $heading ) {
+				$html .= '<h2>' . esc_html( $heading ) . '</h2>';
+			}
+			if ( '' !== $body ) {
+				$html .= '<p>' . esc_html( $body ) . '</p>';
+			}
+		}
+
+		return trim( $html );
+	}
+
 	/**
 	 * Gets default normalized AI result.
 	 *
@@ -232,6 +287,7 @@ class AI_SEO_GEO_Structured_Output_Manager {
 			'output_format'             => '',
 			'format_warnings'           => array(),
 			'optimized_content'         => '',
+			'optimized_content_mapped_from' => '',
 			'gutenberg_content'         => '',
 			'elementor_sections'        => array(),
 			'product_short_description' => '',

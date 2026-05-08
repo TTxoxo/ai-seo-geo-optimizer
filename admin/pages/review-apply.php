@@ -170,6 +170,8 @@ $optimized_content_value = isset( $ai_result['optimized_content'] ) && is_scalar
 $raw_response_preview = isset( $json_debug_info['raw_response_preview'] ) ? (string) $json_debug_info['raw_response_preview'] : '';
 $faq_count = isset( $ai_result['faq'] ) && is_array( $ai_result['faq'] ) ? count( $ai_result['faq'] ) : 0;
 $tags_count = isset( $ai_result['suggested_tags'] ) && is_array( $ai_result['suggested_tags'] ) ? count( $ai_result['suggested_tags'] ) : 0;
+$content_field_selected_debug = (string) ( $json_debug_info['content_field_selected'] ?? ( $ai_result['content_field_selected'] ?? 'no' ) );
+$original_content_length_debug = absint( $json_debug_info['original_content_length'] ?? mb_strlen( wp_strip_all_tags( (string) $original_data['content'] ) ) );
 ?>
 <div class="wrap ai-seo-geo-wrap">
 	<h1><?php esc_html_e( 'Review & Apply (Single Content)', 'ai-seo-geo-optimizer' ); ?></h1>
@@ -204,6 +206,9 @@ $tags_count = isset( $ai_result['suggested_tags'] ) && is_array( $ai_result['sug
 			<p class="description"><?php esc_html_e( 'For administrator debugging only. API keys and headers are never displayed here.', 'ai-seo-geo-optimizer' ); ?></p>
 			<pre style="white-space:pre-wrap;max-height:320px;overflow:auto;"><?php echo esc_html( mb_substr( $raw_response_preview, 0, 1000 ) ); ?></pre>
 		</details>
+	<?php endif; ?>
+	<?php if ( 0 === $original_content_length_debug && 'yes' === $content_field_selected_debug ) : ?>
+		<div class="notice notice-warning"><p><?php esc_html_e( 'Original post content is empty. AI will generate content based on title, excerpt, categories, tags, and target keyword.', 'ai-seo-geo-optimizer' ); ?></p></div>
 	<?php endif; ?>
 	<?php if ( $content_length > 8000 ) : ?>
 		<div class="notice notice-warning">
@@ -275,11 +280,24 @@ $tags_count = isset( $ai_result['suggested_tags'] ) && is_array( $ai_result['sug
 				<li><strong><?php esc_html_e( 'search_intent exists:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( isset( $ai_result['search_intent'] ) ? __( 'Yes', 'ai-seo-geo-optimizer' ) : __( 'No', 'ai-seo-geo-optimizer' ) ); ?></li>
 				<li><strong><?php esc_html_e( 'seo_title length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( (string) ( $ai_result['seo_title'] ?? '' ) ) ); ?></li>
 				<li><strong><?php esc_html_e( 'meta_description length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( (string) ( $ai_result['meta_description'] ?? '' ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'selected_fields:', 'ai-seo-geo-optimizer' ); ?></strong> <pre style="display:inline;white-space:pre-wrap;"><?php echo esc_html( wp_json_encode( $json_debug_info['selected_fields'] ?? array(), JSON_UNESCAPED_UNICODE ) ); ?></pre></li>
+				<li><strong><?php esc_html_e( 'content_field_selected:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( $content_field_selected_debug ); ?></li>
+				<li><strong><?php esc_html_e( 'output_format:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $json_debug_info['output_format'] ?? ( $ai_result['output_format'] ?? '' ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'original_title length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) absint( $json_debug_info['original_title_length'] ?? mb_strlen( (string) $original_data['title'] ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'original_excerpt length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) absint( $json_debug_info['original_excerpt_length'] ?? mb_strlen( (string) $original_data['excerpt'] ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'original_content length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) $original_content_length_debug ); ?></li>
 				<li><strong><?php esc_html_e( 'optimized_content length:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) mb_strlen( $optimized_content_value ) ); ?></li>
+				<li><strong><?php esc_html_e( 'optimized_content_mapped_from:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $json_debug_info['optimized_content_mapped_from'] ?? ( $ai_result['optimized_content_mapped_from'] ?? '' ) ) ); ?></li>
+				<li><strong><?php esc_html_e( 'retry_attempted:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $json_debug_info['retry_attempted'] ?? 'no' ) ); ?></li>
+				<li><strong><?php esc_html_e( 'retry_success:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $json_debug_info['retry_success'] ?? 'no' ) ); ?></li>
 				<li><strong><?php esc_html_e( 'faq count:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) $faq_count ); ?></li>
 				<li><strong><?php esc_html_e( 'suggested_tags count:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) $tags_count ); ?></li>
 				<li><strong><?php esc_html_e( 'risk_level:', 'ai-seo-geo-optimizer' ); ?></strong> <?php echo esc_html( (string) ( $ai_result['risk_level'] ?? '' ) ); ?></li>
 			</ul>
+			<p><strong><?php esc_html_e( 'raw_response_preview:', 'ai-seo-geo-optimizer' ); ?></strong></p>
+			<pre style="white-space:pre-wrap;max-height:220px;overflow:auto;"><?php echo esc_html( mb_substr( (string) ( $json_debug_info['raw_response_preview'] ?? '' ), 0, 1000 ) ); ?></pre>
+			<p><strong><?php esc_html_e( 'normalized_result_preview:', 'ai-seo-geo-optimizer' ); ?></strong></p>
+			<pre style="white-space:pre-wrap;max-height:220px;overflow:auto;"><?php echo esc_html( mb_substr( (string) ( $json_debug_info['normalized_result_preview'] ?? wp_json_encode( $ai_result ) ), 0, 1000 ) ); ?></pre>
 		</details>
 		<h3><?php esc_html_e( 'Human Readability Check', 'ai-seo-geo-optimizer' ); ?></h3>
 		<table class="widefat striped"><tbody>

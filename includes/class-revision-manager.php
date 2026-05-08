@@ -106,7 +106,7 @@ class AI_SEO_GEO_Revision_Manager {
 					array(
 						'job_id'       => $job_id,
 						'post_id'      => $post_id,
-						'action'       => 'apply_selected_changes_blocked',
+						'action'       => 'apply_blocked_empty_optimized_content',
 						'message'      => __( 'Cannot apply empty optimized content.', 'ai-seo-geo-optimizer' ),
 						'context_json' => array(
 							'fields' => $selected_fields,
